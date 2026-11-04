@@ -2,12 +2,462 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>网络监控管理系统</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>网络监控管理系统</title>
+<style>
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: Arial, "Microsoft YaHei", sans-serif;
+  background: #f4f6fa;
+  color: #202938;
+}
+header {
+  background: #172b4d;
+  color: white;
+  padding: 20px 32px;
+  font-size: 21px;
+  font-weight: bold;
+}
+main { max-width: 1250px; margin: 28px auto; padding: 0 20px; }
+.toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  gap: 12px;
+}
+h2 { font-size: 19px; margin: 0; }
+button {
+  border: 0;
+  border-radius: 5px;
+  padding: 9px 15px;
+  cursor: pointer;
+  font-size: 14px;
+}
+.primary { background: #1769aa; color: white; }
+.secondary { background: #e8edf3; color: #26364a; }
+.danger { background: #fff0f0; color: #c0392b; }
+.cards {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 14px;
+  margin-bottom: 24px;
+}
+.card {
+  background: white;
+  border-radius: 8px;
+  padding: 18px;
+  box-shadow: 0 1px 4px #0000000c;
+}
+.card-label { color: #758195; font-size: 13px; }
+.card-value { font-size: 27px; font-weight: bold; margin-top: 9px; }
+.panel {
+  background: white;
+  border-radius: 8px;
+  padding: 20px;
+  box-shadow: 0 1px 4px #0000000c;
+}
+table { width: 100%; border-collapse: collapse; }
+th, td {
+  padding: 13px 10px;
+  border-bottom: 1px solid #edf0f4;
+  text-align: left;
+  font-size: 14px;
+}
+th { color: #69778b; font-weight: 600; background: #fafbfd; }
+.status {
+  display: inline-block;
+  padding: 4px 9px;
+  border-radius: 12px;
+  font-size: 12px;
+}
+.UP { background: #e4f6eb; color: #18834b; }
+.DOWN { background: #ffe8e8; color: #c0392b; }
+.SUSPECT { background: #fff3d9; color: #a66b00; }
+.UNKNOWN { background: #edf0f4; color: #687386; }
+.disabled { color: #999; }
+.actions { display: flex; gap: 7px; }
+.actions button { padding: 6px 10px; font-size: 12px; }
+#message { margin: 12px 0; color: #c0392b; font-size: 14px; }
+#formPanel { display: none; margin-bottom: 22px; }
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 15px;
+}
+.field label {
+  display: block;
+  font-size: 13px;
+  color: #536174;
+  margin-bottom: 6px;
+}
+.field input, .field textarea {
+  width: 100%;
+  border: 1px solid #d7dde6;
+  border-radius: 5px;
+  padding: 10px;
+  font-size: 14px;
+}
+.field textarea { resize: vertical; min-height: 65px; }
+.form-actions { margin-top: 18px; display: flex; gap: 10px; }
+.full { grid-column: 1 / -1; }
+.hint { color: #8792a2; font-size: 12px; margin-top: 5px; }
+footer { color: #8993a2; font-size: 12px; margin: 18px 0; }
+@media(max-width: 850px) {
+  .cards { grid-template-columns: repeat(2, 1fr); }
+  .panel { overflow-x: auto; }
+  table { min-width: 850px; }
+}
+@media(max-width: 550px) {
+  header { padding: 17px 18px; }
+  .form-grid { grid-template-columns: 1fr; }
+  .full { grid-column: auto; }
+  .toolbar { align-items: flex-start; }
+}
+</style>
 </head>
 <body>
-  <h1>网络监控管理系统</h1>
-  <p>前端项目初始化成功。</p>
+<header>网络监控管理系统</header>
+
+<main>
+  <div class="toolbar">
+    <h2>监控总览</h2>
+    <div>
+      <button class="secondary" onclick="loadMonitors()">刷新</button>
+      <button class="primary" onclick="showAddForm()">+ 添加监控</button>
+    </div>
+  </div>
+
+  <div class="cards">
+    <div class="card"><div class="card-label">监控总数</div><div class="card-value" id="total">-</div></div>
+    <div class="card"><div class="card-label">UP 正常</div><div class="card-value" id="up">-</div></div>
+    <div class="card"><div class="card-label">DOWN 故障</div><div class="card-value" id="down">-</div></div>
+    <div class="card"><div class="card-label">SUSPECT 可疑</div><div class="card-value" id="suspect">-</div></div>
+    <div class="card"><div class="card-label">已启用</div><div class="card-value" id="enabled">-</div></div>
+  </div>
+
+  <div id="formPanel" class="panel">
+    <h2 id="formTitle">添加监控</h2>
+    <div style="height:16px"></div>
+    <form id="monitorForm">
+      <div class="form-grid">
+        <div class="field">
+          <label>监控名称 *</label>
+          <input id="name" maxlength="100" required placeholder="例如：公司出口防火墙">
+        </div>
+        <div class="field">
+          <label>目标 IP 或域名 *</label>
+          <input id="target" maxlength="253" required placeholder="例如：1.1.1.1">
+        </div>
+        <div class="field">
+          <label>检查间隔（秒）</label>
+          <input id="interval" type="number" min="60" max="86400" value="300" required>
+        </div>
+        <div class="field">
+          <label>每次探测包数</label>
+          <input id="packets" type="number" min="1" max="10" value="3" required>
+        </div>
+        <div class="field">
+          <label>丢包率阈值（%）</label>
+          <input id="loss" type="number" min="0" max="100" value="50" required>
+        </div>
+        <div class="field">
+          <label>连续失败次数（DOWN）</label>
+          <input id="failure" type="number" min="1" max="20" value="3" required>
+        </div>
+        <div class="field">
+          <label>连续成功次数（恢复 UP）</label>
+          <input id="success" type="number" min="1" max="20" value="2" required>
+        </div>
+        <div class="field" id="locationsField">
+          <label>探测地区代码</label>
+          <input id="locations" value="US,DE,JP" placeholder="例如：US,DE,JP">
+          <div class="hint">填写 1～5 个国家/地区代码，用逗号分隔</div>
+        </div>
+        <div class="field full">
+          <label>描述</label>
+          <textarea id="description" maxlength="500" placeholder="监控对象说明（可选）"></textarea>
+        </div>
+      </div>
+      <div class="form-actions">
+        <button class="primary" type="submit">保存</button>
+        <button class="secondary" type="button" onclick="hideForm()">取消</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="panel">
+    <div class="toolbar">
+      <h2>监控对象</h2>
+      <span id="listCount" style="color:#8993a2;font-size:13px"></span>
+    </div>
+    <div id="message"></div>
+    <table>
+      <thead>
+        <tr>
+          <th>监控名称</th>
+          <th>目标</th>
+          <th>状态</th>
+          <th>启用状态</th>
+          <th>检查间隔</th>
+          <th>最后检查时间</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody id="monitorList">
+        <tr><td colspan="7">正在加载...</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <footer>数据来自网络监控服务 · 页面每 60 秒自动刷新</footer>
+</main>
+
+<script>
+const API = "/api/monitors";
+let monitors = [];
+let editingId = null;
+
+function showMessage(message, isError = true) {
+  const el = document.getElementById("message");
+  el.textContent = message;
+  el.style.color = isError ? "#c0392b" : "#18834b";
+}
+
+function formatTime(value) {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString("zh-CN", { hour12: false });
+}
+
+function statusLabel(status) {
+  const labels = {
+    UP: "UP 正常",
+    DOWN: "DOWN 故障",
+    SUSPECT: "SUSPECT 可疑",
+    UNKNOWN: "UNKNOWN 未知"
+  };
+  return labels[status] || status || "UNKNOWN 未知";
+}
+
+async function apiRequest(url, options = {}) {
+  const response = await fetch(url, {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...(options.headers || {})
+    }
+  });
+
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok || data.success === false) {
+    throw new Error(data.error || `请求失败：HTTP ${response.status}`);
+  }
+  return data;
+}
+
+async function loadMonitors() {
+  try {
+    const data = await apiRequest(API);
+    monitors = Array.isArray(data.monitors) ? data.monitors : [];
+    render();
+    showMessage("", false);
+  } catch (error) {
+    showMessage("读取监控数据失败：" + error.message);
+  }
+}
+
+function render() {
+  const active = monitors.filter(m => m.enabled);
+  document.getElementById("total").textContent = monitors.length;
+  document.getElementById("enabled").textContent = active.length;
+  document.getElementById("up").textContent =
+    active.filter(m => m.current_status === "UP").length;
+  document.getElementById("down").textContent =
+    active.filter(m => m.current_status === "DOWN").length;
+  document.getElementById("suspect").textContent =
+    active.filter(m => m.current_status === "SUSPECT").length;
+
+  document.getElementById("listCount").textContent =
+    `共 ${monitors.length} 条记录`;
+
+  const tbody = document.getElementById("monitorList");
+  tbody.replaceChildren();
+
+  if (!monitors.length) {
+    const tr = document.createElement("tr");
+    const td = document.createElement("td");
+    td.colSpan = 7;
+    td.textContent = "暂无监控对象";
+    tr.appendChild(td);
+    tbody.appendChild(tr);
+    return;
+  }
+
+  for (const monitor of monitors) {
+    const tr = document.createElement("tr");
+    if (!monitor.enabled) tr.className = "disabled";
+
+    function cell(value) {
+      const td = document.createElement("td");
+      td.textContent = value ?? "-";
+      tr.appendChild(td);
+      return td;
+    }
+
+    cell(monitor.name);
+    cell(monitor.target);
+
+    const statusCell = document.createElement("td");
+    const badge = document.createElement("span");
+    badge.className = "status " + (monitor.current_status || "UNKNOWN");
+    badge.textContent = statusLabel(monitor.current_status);
+    statusCell.appendChild(badge);
+    tr.appendChild(statusCell);
+
+    cell(monitor.enabled ? "已启用" : "已停用");
+    cell(`${monitor.interval_seconds} 秒`);
+    cell(formatTime(monitor.last_checked_at));
+
+    const actionCell = document.createElement("td");
+    const actions = document.createElement("div");
+    actions.className = "actions";
+
+    const editButton = document.createElement("button");
+    editButton.className = "secondary";
+    editButton.textContent = "编辑";
+    editButton.onclick = () => showEditForm(monitor.id);
+    actions.appendChild(editButton);
+
+    const toggleButton = document.createElement("button");
+    toggleButton.className = monitor.enabled ? "danger" : "primary";
+    toggleButton.textContent = monitor.enabled ? "停用" : "启用";
+    toggleButton.onclick = () => toggleMonitor(monitor);
+    actions.appendChild(toggleButton);
+
+    actionCell.appendChild(actions);
+    tr.appendChild(actionCell);
+    tbody.appendChild(tr);
+  }
+}
+
+function showAddForm() {
+  editingId = null;
+  document.getElementById("monitorForm").reset();
+  document.getElementById("interval").value = 300;
+  document.getElementById("packets").value = 3;
+  document.getElementById("loss").value = 50;
+  document.getElementById("failure").value = 3;
+  document.getElementById("success").value = 2;
+  document.getElementById("locations").value = "US,DE,JP";
+  document.getElementById("locationsField").style.display = "";
+  document.getElementById("formTitle").textContent = "添加监控";
+  document.getElementById("formPanel").style.display = "block";
+  document.getElementById("name").focus();
+}
+
+function showEditForm(id) {
+  const m = monitors.find(item => item.id === id);
+  if (!m) return;
+
+  editingId = id;
+  document.getElementById("name").value = m.name || "";
+  document.getElementById("target").value = m.target || "";
+  document.getElementById("interval").value = m.interval_seconds ?? 300;
+  document.getElementById("packets").value = m.packets ?? 3;
+  document.getElementById("loss").value = m.loss_threshold ?? 50;
+  document.getElementById("failure").value = m.failure_threshold ?? 3;
+  document.getElementById("success").value = m.success_threshold ?? 2;
+  document.getElementById("description").value = m.description || "";
+
+  // 编辑时不修改探测地区，避免覆盖已有地区配置
+  document.getElementById("locationsField").style.display = "none";
+  document.getElementById("formTitle").textContent = "编辑监控";
+  document.getElementById("formPanel").style.display = "block";
+  document.getElementById("formPanel").scrollIntoView({ behavior: "smooth" });
+}
+
+function hideForm() {
+  document.getElementById("formPanel").style.display = "none";
+  editingId = null;
+}
+
+document.getElementById("monitorForm").addEventListener("submit", async event => {
+  event.preventDefault();
+
+  const payload = {
+    name: document.getElementById("name").value.trim(),
+    target: document.getElementById("target").value.trim(),
+    monitor_type: "ping",
+    interval_seconds: Number(document.getElementById("interval").value),
+    packets: Number(document.getElementById("packets").value),
+    loss_threshold: Number(document.getElementById("loss").value),
+    failure_threshold: Number(document.getElementById("failure").value),
+    success_threshold: Number(document.getElementById("success").value),
+    description: document.getElementById("description").value.trim()
+  };
+
+  if (!editingId) {
+    payload.locations = document.getElementById("locations").value
+      .split(",")
+      .map(item => item.trim().toUpperCase())
+      .filter(Boolean);
+    payload.enabled = true;
+  }
+
+  try {
+    if (editingId) {
+      await apiRequest(`${API}/${encodeURIComponent(editingId)}`, {
+        method: "PUT",
+        body: JSON.stringify(payload)
+      });
+      showMessage("监控对象修改成功", false);
+    } else {
+      await apiRequest(API, {
+        method: "POST",
+        body: JSON.stringify(payload)
+      });
+      showMessage("监控对象添加成功", false);
+    }
+
+    hideForm();
+    await loadMonitors();
+  } catch (error) {
+    showMessage("保存失败：" + error.message);
+  }
+});
+
+async function toggleMonitor(monitor) {
+  const enable = !monitor.enabled;
+  const action = enable ? "启用" : "停用";
+
+  if (!confirm(`确定要${action}“${monitor.name}”吗？`)) return;
+
+  try {
+    if (enable) {
+      await apiRequest(`${API}/${encodeURIComponent(monitor.id)}`, {
+        method: "PUT",
+        body: JSON.stringify({ enabled: true })
+      });
+    } else {
+      await apiRequest(`${API}/${encodeURIComponent(monitor.id)}`, {
+        method: "DELETE"
+      });
+    }
+
+    showMessage(`监控对象已${action}`, false);
+    await loadMonitors();
+  } catch (error) {
+    showMessage(`${action}失败：` + error.message);
+  }
+}
+
+loadMonitors();
+setInterval(loadMonitors, 60000);
+</script>
 </body>
 </html>
