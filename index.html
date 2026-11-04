@@ -456,7 +456,8 @@ async function apiRequest(url, options = {}) {
   const data = await response.json().catch(() => ({}));
 
   if (!response.ok || data.success === false) {
-    throw new Error(data.error || `请求失败：HTTP ${response.status}`);
+    const detail = data.code ? ` [${data.code}]` : "";
+    throw new Error((data.error || `请求失败：HTTP ${response.status}`) + detail);
   }
   return data;
 }
