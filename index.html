@@ -1034,7 +1034,6 @@ async function loadHeartbeatDevices() {
     const data = await apiRequest(HEARTBEAT_DEVICE_API);
     heartbeatDevices = Array.isArray(data.devices) ? data.devices : [];
     renderHeartbeatDevices();
-    setInlineMessage("heartbeatMessage", "", false);
   } catch (error) {
     setInlineMessage("heartbeatMessage", "读取心跳设备失败：" + error.message);
   }
