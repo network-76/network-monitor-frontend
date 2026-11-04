@@ -47,7 +47,7 @@ export default {
     if (request.method === "GET" && url.pathname === "/api/heartbeat/notifications") {
       return listHeartbeatNotifications(url, env);
     }
-    const heartbeatDeviceMatch = url.pathname.match(/^\\/api\\/heartbeat\\/devices\\/([^/]+)$/);
+    const heartbeatDeviceMatch = url.pathname.match(/^\/api\/heartbeat\/devices\/([^/]+)$/);
     if (heartbeatDeviceMatch) {
       let deviceId;
       try { deviceId = decodeURIComponent(heartbeatDeviceMatch[1]); }
