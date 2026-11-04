@@ -2745,7 +2745,8 @@ async function processPendingHeartbeatNotifications(env) {
     JOIN heartbeat_devices d ON d.id=e.device_id
     JOIN webhook_configs w ON w.id=l.webhook_config_id
     WHERE w.enabled=1 AND (
-      (l.status IN ('pending','failed') AND (l.next_retry_at IS NULL OR l.next_retry_at<=?))
+      l.status='pending'
+      OR (l.status='failed' AND l.next_retry_at IS NOT NULL AND l.next_retry_at<=?)
       OR (l.status='sending' AND l.updated_at<=?)
     )
     ORDER BY l.created_at ASC LIMIT ?
