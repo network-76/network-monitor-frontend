@@ -116,6 +116,33 @@ footer { color: #8993a2; font-size: 12px; margin: 18px 0; }
   .full { grid-column: auto; }
   .toolbar { align-items: flex-start; }
 }
+
+.webhook-section { margin-top: 24px; }
+.section-toolbar { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:14px; }
+.section-toolbar h2 { margin:0; }
+.webhook-form { display:none; margin:0 0 18px; }
+.field select, .field textarea { width:100%; border:1px solid #d7dde6; border-radius:5px; padding:10px; font-size:14px; background:white; }
+.field textarea { min-height:110px; font-family:Consolas, monospace; }
+.check-row { display:flex; gap:18px; align-items:center; min-height:38px; }
+.check-row label { display:flex; align-items:center; gap:6px; font-size:14px; color:#536174; }
+.webhook-table-wrap { overflow-x:auto; }
+.webhook-table { min-width:950px; }
+.webhook-table td { vertical-align:top; }
+.url-cell { max-width:250px; overflow-wrap:anywhere; color:#536174; }
+.small-muted { color:#8993a2; font-size:12px; }
+.tag { display:inline-block; border-radius:10px; padding:3px 8px; font-size:12px; margin-right:4px; background:#edf0f4; color:#536174; }
+.tag.down { background:#ffe8e8; color:#c0392b; }
+.tag.up { background:#e4f6eb; color:#18834b; }
+.log-status { display:inline-block; border-radius:10px; padding:3px 8px; font-size:12px; background:#edf0f4; color:#536174; }
+.log-status.sent { background:#e4f6eb; color:#18834b; }
+.log-status.failed { background:#ffe8e8; color:#c0392b; }
+.log-status.pending, .log-status.sending { background:#fff3d9; color:#a66b00; }
+.inline-message { margin:10px 0; font-size:13px; min-height:18px; }
+.code-hint { white-space:pre-wrap; overflow-wrap:anywhere; background:#f7f9fc; border:1px solid #edf0f4; padding:10px; border-radius:5px; color:#536174; font-size:12px; }
+@media(max-width:850px) {
+  .section-toolbar { align-items:flex-start; flex-direction:column; }
+}
+
 </style>
 </head>
 <body>
@@ -210,6 +237,121 @@ footer { color: #8993a2; font-size: 12px; margin: 18px 0; }
         <tr><td colspan="7">正在加载...</td></tr>
       </tbody>
     </table>
+  </div>
+
+
+  <div class="panel webhook-section">
+    <div class="section-toolbar">
+      <h2>Webhook 告警配置</h2>
+      <button class="primary" type="button" onclick="showWebhookAddForm()">+ 添加 Webhook</button>
+    </div>
+    <div id="webhookMessage" class="inline-message"></div>
+
+    <div id="webhookFormPanel" class="panel webhook-form">
+      <h2 id="webhookFormTitle">添加 Webhook</h2>
+      <div style="height:16px"></div>
+      <form id="webhookForm">
+        <div class="form-grid">
+          <div class="field">
+            <label for="webhookName">配置名称 *</label>
+            <input id="webhookName" maxlength="100" required placeholder="例如：企业微信告警">
+          </div>
+          <div class="field">
+            <label for="webhookUrl">Webhook URL（仅 HTTPS）*</label>
+            <input id="webhookUrl" type="url" required placeholder="https://example.com/webhook">
+          </div>
+          <div class="field">
+            <label for="webhookMethod">HTTP 方法</label>
+            <select id="webhookMethod">
+              <option value="POST">POST</option>
+              <option value="PUT">PUT</option>
+              <option value="PATCH">PATCH</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>告警事件</label>
+            <div class="check-row">
+              <label><input id="eventDown" type="checkbox" checked> 故障 DOWN</label>
+              <label><input id="eventUp" type="checkbox" checked> 恢复 UP</label>
+            </div>
+          </div>
+          <div class="field">
+            <label for="webhookTimeout">请求超时（秒，1～30）</label>
+            <input id="webhookTimeout" type="number" min="1" max="30" value="10" required>
+          </div>
+          <div class="field">
+            <label for="webhookRetries">失败重试次数（0～5）</label>
+            <input id="webhookRetries" type="number" min="0" max="5" value="3" required>
+          </div>
+          <div class="field full">
+            <label for="webhookHeaders">自定义 HTTP 请求头（JSON 对象）</label>
+            <textarea id="webhookHeaders" rows="3">{}</textarea>
+            <div class="hint">例如：{"Authorization":"Bearer your-token"}。Content-Type 会自动设置为 JSON。</div>
+          </div>
+          <div class="field full">
+            <label for="webhookBody">消息体模板（JSON）*</label>
+            <textarea id="webhookBody" rows="9" required></textarea>
+            <div class="hint">占位符必须放在 JSON 字符串值中。支持 event_type、monitor_name、target、previous_status、current_status、message、event_id、created_at、details_json。</div>
+          </div>
+          <div class="field">
+            <label>配置状态</label>
+            <div class="check-row">
+              <label><input id="webhookEnabled" type="checkbox" checked> 创建后立即启用</label>
+            </div>
+          </div>
+        </div>
+        <div class="form-actions">
+          <button class="primary" type="submit">保存配置</button>
+          <button class="secondary" type="button" onclick="hideWebhookForm()">取消</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="webhook-table-wrap">
+      <table class="webhook-table">
+        <thead>
+          <tr>
+            <th>配置名称</th>
+            <th>Webhook 地址</th>
+            <th>告警事件</th>
+            <th>状态</th>
+            <th>超时 / 重试</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody id="webhookList">
+          <tr><td colspan="6">正在加载...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="panel webhook-section">
+    <div class="section-toolbar">
+      <h2>告警通知记录</h2>
+      <button class="secondary" type="button" onclick="loadNotifications()">刷新记录</button>
+    </div>
+    <div id="notificationMessage" class="inline-message"></div>
+    <div class="webhook-table-wrap">
+      <table class="webhook-table">
+        <thead>
+          <tr>
+            <th>创建时间</th>
+            <th>Webhook 配置</th>
+            <th>监控对象</th>
+            <th>事件</th>
+            <th>发送状态</th>
+            <th>尝试次数</th>
+            <th>HTTP 状态</th>
+            <th>失败原因</th>
+          </tr>
+        </thead>
+        <tbody id="notificationList">
+          <tr><td colspan="8">正在加载...</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="hint">仅显示最近 50 条通知记录。测试发送不会写入此记录；正式 DOWN / UP 状态变化才会生成通知。</div>
   </div>
 
   <footer>数据来自网络监控服务 · 页面每 60 秒自动刷新</footer>
@@ -456,8 +598,363 @@ async function toggleMonitor(monitor) {
   }
 }
 
+
+// ==================================================
+// Webhook 告警配置与通知记录
+// ==================================================
+
+const WEBHOOK_API = "/api/webhooks";
+const NOTIFICATION_API = "/api/notifications";
+let webhooks = [];
+let editingWebhookId = null;
+
+const DEFAULT_WEBHOOK_TEMPLATE = `{
+  "event": "{{event_type}}",
+  "monitor": "{{monitor_name}}",
+  "target": "{{target}}",
+  "previous_status": "{{previous_status}}",
+  "current_status": "{{current_status}}",
+  "message": "{{message}}",
+  "event_id": "{{event_id}}",
+  "created_at": "{{created_at}}"
+}`;
+
+function setInlineMessage(id, message, isError = true) {
+  const el = document.getElementById(id);
+  el.textContent = message || "";
+  el.style.color = isError ? "#c0392b" : "#18834b";
+}
+
+function escapeHtml(value) {
+  return String(value ?? "").replace(/[&<>"']/g, ch => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+  })[ch]);
+}
+
+function webhookEventText(events) {
+  const result = [];
+  if (events.includes("down")) result.push('<span class="tag down">故障 DOWN</span>');
+  if (events.includes("up")) result.push('<span class="tag up">恢复 UP</span>');
+  return result.join(" ") || "-";
+}
+
+function notificationStatusText(status, nextRetryAt) {
+  const labels = {
+    pending: "待发送",
+    sending: "发送中",
+    sent: "已发送",
+    failed: nextRetryAt ? "发送失败（待重试）" : "发送失败"
+  };
+  return labels[status] || status || "未知";
+}
+
+async function loadWebhooks() {
+  try {
+    const data = await apiRequest(WEBHOOK_API);
+    webhooks = Array.isArray(data.webhooks) ? data.webhooks : [];
+    renderWebhooks();
+    setInlineMessage("webhookMessage", "", false);
+  } catch (error) {
+    setInlineMessage("webhookMessage", "读取 Webhook 配置失败：" + error.message);
+  }
+}
+
+function renderWebhooks() {
+  const tbody = document.getElementById("webhookList");
+  tbody.replaceChildren();
+
+  if (!webhooks.length) {
+    const tr = document.createElement("tr");
+    const td = document.createElement("td");
+    td.colSpan = 6;
+    td.textContent = "暂无 Webhook 配置";
+    tr.appendChild(td);
+    tbody.appendChild(tr);
+    return;
+  }
+
+  for (const item of webhooks) {
+    const tr = document.createElement("tr");
+    if (!item.enabled) tr.className = "disabled";
+
+    const name = document.createElement("td");
+    name.textContent = item.name || "-";
+    tr.appendChild(name);
+
+    const url = document.createElement("td");
+    url.className = "url-cell";
+    url.textContent = item.webhook_url || "-";
+    tr.appendChild(url);
+
+    const events = document.createElement("td");
+    events.innerHTML = webhookEventText(Array.isArray(item.event_types) ? item.event_types : []);
+    tr.appendChild(events);
+
+    const state = document.createElement("td");
+    state.textContent = item.enabled ? "已启用" : "已停用";
+    tr.appendChild(state);
+
+    const retry = document.createElement("td");
+    retry.textContent = `${item.timeout_seconds} 秒 / ${item.retry_count} 次`;
+    tr.appendChild(retry);
+
+    const actionCell = document.createElement("td");
+    const actions = document.createElement("div");
+    actions.className = "actions";
+
+    const edit = document.createElement("button");
+    edit.className = "secondary";
+    edit.textContent = "编辑";
+    edit.onclick = () => showWebhookEditForm(item.id);
+    actions.appendChild(edit);
+
+    const test = document.createElement("button");
+    test.className = "secondary";
+    test.textContent = "测试";
+    test.onclick = () => testWebhook(item);
+    actions.appendChild(test);
+
+    const toggle = document.createElement("button");
+    toggle.className = item.enabled ? "danger" : "primary";
+    toggle.textContent = item.enabled ? "停用" : "启用";
+    toggle.onclick = () => toggleWebhook(item);
+    actions.appendChild(toggle);
+
+    actionCell.appendChild(actions);
+    tr.appendChild(actionCell);
+    tbody.appendChild(tr);
+  }
+}
+
+function resetWebhookForm() {
+  document.getElementById("webhookForm").reset();
+  document.getElementById("webhookMethod").value = "POST";
+  document.getElementById("webhookTimeout").value = 10;
+  document.getElementById("webhookRetries").value = 3;
+  document.getElementById("webhookHeaders").value = "{}";
+  document.getElementById("webhookBody").value = DEFAULT_WEBHOOK_TEMPLATE;
+  document.getElementById("eventDown").checked = true;
+  document.getElementById("eventUp").checked = true;
+  document.getElementById("webhookEnabled").checked = true;
+}
+
+function showWebhookAddForm() {
+  editingWebhookId = null;
+  resetWebhookForm();
+  document.getElementById("webhookFormTitle").textContent = "添加 Webhook";
+  document.getElementById("webhookFormPanel").style.display = "block";
+  document.getElementById("webhookFormPanel").scrollIntoView({ behavior: "smooth" });
+  document.getElementById("webhookName").focus();
+}
+
+function showWebhookEditForm(id) {
+  const item = webhooks.find(x => x.id === id);
+  if (!item) return;
+
+  editingWebhookId = id;
+  document.getElementById("webhookName").value = item.name || "";
+  document.getElementById("webhookUrl").value = item.webhook_url || "";
+  document.getElementById("webhookMethod").value = item.http_method || "POST";
+  document.getElementById("eventDown").checked = (item.event_types || []).includes("down");
+  document.getElementById("eventUp").checked = (item.event_types || []).includes("up");
+  document.getElementById("webhookTimeout").value = item.timeout_seconds ?? 10;
+  document.getElementById("webhookRetries").value = item.retry_count ?? 3;
+  document.getElementById("webhookHeaders").value = JSON.stringify(item.headers || {}, null, 2);
+  document.getElementById("webhookBody").value = item.body_template || DEFAULT_WEBHOOK_TEMPLATE;
+  document.getElementById("webhookEnabled").checked = !!item.enabled;
+  document.getElementById("webhookFormTitle").textContent = "编辑 Webhook";
+  document.getElementById("webhookFormPanel").style.display = "block";
+  document.getElementById("webhookFormPanel").scrollIntoView({ behavior: "smooth" });
+}
+
+function hideWebhookForm() {
+  document.getElementById("webhookFormPanel").style.display = "none";
+  editingWebhookId = null;
+}
+
+document.getElementById("webhookForm").addEventListener("submit", async event => {
+  event.preventDefault();
+
+  const selectedEvents = [];
+  if (document.getElementById("eventDown").checked) selectedEvents.push("down");
+  if (document.getElementById("eventUp").checked) selectedEvents.push("up");
+  if (!selectedEvents.length) {
+    setInlineMessage("webhookMessage", "至少选择一种告警事件（DOWN 或 UP）");
+    return;
+  }
+
+  let headers;
+  try {
+    headers = JSON.parse(document.getElementById("webhookHeaders").value || "{}");
+  } catch {
+    setInlineMessage("webhookMessage", "自定义请求头不是有效的 JSON");
+    return;
+  }
+  if (!headers || typeof headers !== "object" || Array.isArray(headers)) {
+    setInlineMessage("webhookMessage", "自定义请求头必须是 JSON 对象");
+    return;
+  }
+
+  const bodyTemplate = document.getElementById("webhookBody").value;
+  try {
+    JSON.parse(bodyTemplate);
+  } catch {
+    setInlineMessage("webhookMessage", "消息体模板不是有效的 JSON，请检查格式");
+    return;
+  }
+
+  const webhookUrl = document.getElementById("webhookUrl").value.trim();
+  if (!webhookUrl.toLowerCase().startsWith("https://")) {
+    setInlineMessage("webhookMessage", "Webhook 地址必须使用 HTTPS");
+    return;
+  }
+
+  const payload = {
+    name: document.getElementById("webhookName").value.trim(),
+    webhook_url: webhookUrl,
+    http_method: document.getElementById("webhookMethod").value,
+    event_types: selectedEvents,
+    timeout_seconds: Number(document.getElementById("webhookTimeout").value),
+    retry_count: Number(document.getElementById("webhookRetries").value),
+    headers,
+    body_template: bodyTemplate,
+    enabled: document.getElementById("webhookEnabled").checked
+  };
+
+  try {
+    if (editingWebhookId) {
+      await apiRequest(`${WEBHOOK_API}/${encodeURIComponent(editingWebhookId)}`, {
+        method: "PUT",
+        body: JSON.stringify(payload)
+      });
+      setInlineMessage("webhookMessage", "Webhook 配置已更新", false);
+    } else {
+      await apiRequest(WEBHOOK_API, {
+        method: "POST",
+        body: JSON.stringify(payload)
+      });
+      setInlineMessage("webhookMessage", "Webhook 配置已创建", false);
+    }
+    hideWebhookForm();
+    await loadWebhooks();
+  } catch (error) {
+    setInlineMessage("webhookMessage", "保存 Webhook 失败：" + error.message);
+  }
+});
+
+async function testWebhook(item) {
+  if (!confirm(`向“${item.name}”发送一条测试消息？`)) return;
+  setInlineMessage("webhookMessage", `正在测试发送：${item.name}……`, false);
+  try {
+    const result = await apiRequest(`${WEBHOOK_API}/${encodeURIComponent(item.id)}/test`, {
+      method: "POST"
+    });
+    const statusText = result.http_status ? `HTTP ${result.http_status}` : "未返回 HTTP 状态";
+    setInlineMessage("webhookMessage", `测试发送成功（${statusText}）。测试消息不会写入正式通知记录。`, false);
+    alert(`Webhook 测试发送成功\n${statusText}\n${result.response_body || ""}`);
+  } catch (error) {
+    setInlineMessage("webhookMessage", "Webhook 测试发送失败：" + error.message);
+    alert("Webhook 测试发送失败：\n" + error.message);
+  }
+}
+
+async function toggleWebhook(item) {
+  const enable = !item.enabled;
+  const action = enable ? "启用" : "停用";
+  if (!confirm(`确定要${action} Webhook“${item.name}”吗？`)) return;
+
+  try {
+    if (enable) {
+      await apiRequest(`${WEBHOOK_API}/${encodeURIComponent(item.id)}`, {
+        method: "PUT",
+        body: JSON.stringify({ enabled: true })
+      });
+    } else {
+      // DELETE API 为逻辑停用，保留配置及历史通知记录
+      await apiRequest(`${WEBHOOK_API}/${encodeURIComponent(item.id)}`, {
+        method: "DELETE"
+      });
+    }
+    setInlineMessage("webhookMessage", `Webhook 已${action}`, false);
+    await loadWebhooks();
+  } catch (error) {
+    setInlineMessage("webhookMessage", `${action} Webhook 失败：` + error.message);
+  }
+}
+
+async function loadNotifications() {
+  try {
+    const data = await apiRequest(`${NOTIFICATION_API}?limit=50&offset=0`);
+    renderNotifications(Array.isArray(data.notifications) ? data.notifications : []);
+    setInlineMessage("notificationMessage", "", false);
+  } catch (error) {
+    setInlineMessage("notificationMessage", "读取通知记录失败：" + error.message);
+  }
+}
+
+function renderNotifications(items) {
+  const tbody = document.getElementById("notificationList");
+  tbody.replaceChildren();
+
+  if (!items.length) {
+    const tr = document.createElement("tr");
+    const td = document.createElement("td");
+    td.colSpan = 8;
+    td.textContent = "暂无通知记录";
+    tr.appendChild(td);
+    tbody.appendChild(tr);
+    return;
+  }
+
+  for (const item of items) {
+    const tr = document.createElement("tr");
+
+    function addCell(value) {
+      const td = document.createElement("td");
+      td.textContent = value ?? "-";
+      tr.appendChild(td);
+      return td;
+    }
+
+    addCell(formatTime(item.created_at));
+    addCell(item.webhook_name || "-");
+    const monitorText = item.monitor_name
+      ? `${item.monitor_name}${item.target ? " (" + item.target + ")" : ""}`
+      : "-";
+    addCell(monitorText);
+
+    const eventCell = addCell("");
+    const eventStatus = item.current_status || "-";
+    eventCell.textContent = eventStatus === "DOWN" ? "故障 DOWN" :
+      eventStatus === "UP" ? "恢复 UP" : eventStatus;
+
+    const statusCell = document.createElement("td");
+    const badge = document.createElement("span");
+    badge.className = "log-status " + (item.status || "");
+    badge.textContent = notificationStatusText(item.status, item.next_retry_at);
+    statusCell.appendChild(badge);
+    tr.appendChild(statusCell);
+
+    addCell(item.attempt_count ?? 0);
+    addCell(item.http_status ?? "-");
+    const errorCell = addCell(item.error_message || "-");
+    errorCell.style.maxWidth = "220px";
+    errorCell.style.overflowWrap = "anywhere";
+
+    tbody.appendChild(tr);
+  }
+}
+
+
+
 loadMonitors();
-setInterval(loadMonitors, 60000);
+loadWebhooks();
+loadNotifications();
+setInterval(() => {
+  loadMonitors();
+  loadWebhooks();
+  loadNotifications();
+}, 60000);
 </script>
 </body>
 </html>
