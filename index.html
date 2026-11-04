@@ -143,6 +143,14 @@ footer { color: #8993a2; font-size: 12px; margin: 18px 0; }
   .section-toolbar { align-items:flex-start; flex-direction:column; }
 }
 
+
+.heartbeat-section { margin-top: 24px; }
+.heartbeat-form { display:none; margin:0 0 18px; }
+.heartbeat-table { min-width:1250px; }
+.heartbeat-url-panel { margin:0 0 18px; padding:14px; border:1px solid #d7e5f3; border-radius:6px; background:#f7faff; }
+.heartbeat-url-row { display:flex; gap:10px; margin-top:10px; }
+.heartbeat-url-row input { flex:1; min-width:0; border:1px solid #d7dde6; border-radius:5px; padding:10px; font-size:13px; background:white; }
+@media(max-width:550px) { .heartbeat-url-row { flex-direction:column; } }
 </style>
 </head>
 <body>
@@ -354,6 +362,57 @@ footer { color: #8993a2; font-size: 12px; margin: 18px 0; }
     <div class="hint">仅显示最近 50 条通知记录。测试发送不会写入此记录；正式 DOWN / UP 状态变化才会生成通知。</div>
   </div>
 
+  <div class="panel heartbeat-section">
+    <div class="section-toolbar">
+      <h2>心跳设备</h2>
+      <button class="primary" type="button" onclick="showHeartbeatAddForm()">+ 添加心跳设备</button>
+    </div>
+    <div id="heartbeatMessage" class="inline-message"></div>
+    <div id="heartbeatFormPanel" class="panel heartbeat-form">
+      <h2>添加心跳设备</h2>
+      <div style="height:16px"></div>
+      <form id="heartbeatForm">
+        <div class="form-grid">
+          <div class="field"><label for="heartbeatName">设备名称 *</label><input id="heartbeatName" maxlength="100" required placeholder="例如：总部 AC"></div>
+          <div class="field"><label for="heartbeatCode">设备编号 *</label><input id="heartbeatCode" maxlength="100" required placeholder="例如：AC-HQ-001"></div>
+          <div class="field">
+            <label for="heartbeatType">设备类型</label>
+            <select id="heartbeatType">
+              <option value="ac">AC</option><option value="switch">交换机</option>
+              <option value="gateway">网关</option><option value="server">服务器</option><option value="other">其他</option>
+            </select>
+          </div>
+          <div class="field"><label for="heartbeatInterval">心跳间隔（秒）</label><input id="heartbeatInterval" type="number" min="10" max="86400" value="60" required></div>
+          <div class="field">
+            <label for="heartbeatOffline">离线判定阈值（秒）</label>
+            <input id="heartbeatOffline" type="number" min="10" max="604800" value="180" required>
+            <div class="hint">必须大于或等于心跳间隔</div>
+          </div>
+        </div>
+        <div class="form-actions">
+          <button class="primary" type="submit">创建设备并生成 URL</button>
+          <button class="secondary" type="button" onclick="hideHeartbeatForm()">取消</button>
+        </div>
+      </form>
+    </div>
+    <div id="heartbeatUrlPanel" class="heartbeat-url-panel" style="display:none">
+      <strong>设备心跳 URL（仅本次创建时显示）</strong>
+      <div class="heartbeat-url-row">
+        <input id="heartbeatUrl" type="text" readonly>
+        <button class="primary" type="button" onclick="copyHeartbeatUrl()">复制 URL</button>
+      </div>
+      <div class="hint">请将完整 URL 填入设备管理界面的「心跳目标链接 URL」。此 URL 包含设备专属 Token，请妥善保管。关闭或刷新页面后不会再次显示；如遗失，请停用旧设备并重新创建。</div>
+    </div>
+    <div class="webhook-table-wrap">
+      <table class="webhook-table heartbeat-table">
+        <thead><tr>
+          <th>设备名称</th><th>设备编号</th><th>类型</th><th>状态</th><th>启用状态</th>
+          <th>心跳间隔</th><th>离线阈值</th><th>最后心跳时间</th><th>最后来源 IP</th><th>操作</th>
+        </tr></thead>
+        <tbody id="heartbeatDeviceList"><tr><td colspan="10">正在加载...</td></tr></tbody>
+      </table>
+    </div>
+  </div>
   <footer>数据来自网络监控服务 · 页面每 60 秒自动刷新</footer>
 </main>
 
@@ -947,13 +1006,151 @@ function renderNotifications(items) {
 
 
 
+
+const HEARTBEAT_DEVICE_API = "/api/heartbeat/devices";
+let heartbeatDevices = [];
+
+function showHeartbeatAddForm() {
+  document.getElementById("heartbeatForm").reset();
+  document.getElementById("heartbeatType").value = "ac";
+  document.getElementById("heartbeatInterval").value = 60;
+  document.getElementById("heartbeatOffline").value = 180;
+  document.getElementById("heartbeatUrlPanel").style.display = "none";
+  document.getElementById("heartbeatFormPanel").style.display = "block";
+  document.getElementById("heartbeatFormPanel").scrollIntoView({ behavior: "smooth" });
+  document.getElementById("heartbeatName").focus();
+}
+function hideHeartbeatForm() {
+  document.getElementById("heartbeatFormPanel").style.display = "none";
+}
+function heartbeatTypeLabel(type) {
+  return ({ac:"AC",switch:"交换机",gateway:"网关",server:"服务器",other:"其他"})[type] || type || "-";
+}
+function heartbeatStatusLabel(status) {
+  return ({UP:"UP 正常",DOWN:"DOWN 离线",UNKNOWN:"UNKNOWN 未知"})[status] || status || "UNKNOWN 未知";
+}
+async function loadHeartbeatDevices() {
+  try {
+    const data = await apiRequest(HEARTBEAT_DEVICE_API);
+    heartbeatDevices = Array.isArray(data.devices) ? data.devices : [];
+    renderHeartbeatDevices();
+    setInlineMessage("heartbeatMessage", "", false);
+  } catch (error) {
+    setInlineMessage("heartbeatMessage", "读取心跳设备失败：" + error.message);
+  }
+}
+function renderHeartbeatDevices() {
+  const tbody = document.getElementById("heartbeatDeviceList");
+  tbody.replaceChildren();
+  if (!heartbeatDevices.length) {
+    const tr = document.createElement("tr");
+    const td = document.createElement("td");
+    td.colSpan = 10;
+    td.textContent = "暂无心跳设备";
+    tr.appendChild(td);
+    tbody.appendChild(tr);
+    return;
+  }
+  for (const device of heartbeatDevices) {
+    const tr = document.createElement("tr");
+    if (!device.enabled) tr.className = "disabled";
+    for (const value of [device.name,device.device_code,heartbeatTypeLabel(device.device_type)]) {
+      const td = document.createElement("td");
+      td.textContent = value ?? "-";
+      tr.appendChild(td);
+    }
+    const statusCell = document.createElement("td");
+    const badge = document.createElement("span");
+    badge.className = "status " + (device.current_status || "UNKNOWN");
+    badge.textContent = heartbeatStatusLabel(device.current_status);
+    statusCell.appendChild(badge);
+    tr.appendChild(statusCell);
+    const enabledCell = document.createElement("td");
+    enabledCell.textContent = device.enabled ? "已启用" : "已停用";
+    tr.appendChild(enabledCell);
+    for (const value of [
+      device.heartbeat_interval_seconds + " 秒",
+      device.offline_threshold_seconds + " 秒",
+      formatTime(device.last_heartbeat_at),
+      device.last_ip || "-"
+    ]) {
+      const td = document.createElement("td");
+      td.textContent = value;
+      tr.appendChild(td);
+    }
+    const actionCell = document.createElement("td");
+    if (device.enabled) {
+      const button = document.createElement("button");
+      button.className = "danger";
+      button.textContent = "停用";
+      button.onclick = () => disableHeartbeatDevice(device);
+      actionCell.appendChild(button);
+    } else {
+      actionCell.textContent = "-";
+    }
+    tr.appendChild(actionCell);
+    tbody.appendChild(tr);
+  }
+}
+document.getElementById("heartbeatForm").addEventListener("submit", async event => {
+  event.preventDefault();
+  const interval = Number(document.getElementById("heartbeatInterval").value);
+  const offline = Number(document.getElementById("heartbeatOffline").value);
+  if (offline < interval) {
+    setInlineMessage("heartbeatMessage", "离线判定阈值必须大于或等于心跳间隔");
+    return;
+  }
+  const payload = {
+    name: document.getElementById("heartbeatName").value.trim(),
+    device_code: document.getElementById("heartbeatCode").value.trim(),
+    device_type: document.getElementById("heartbeatType").value,
+    heartbeat_interval_seconds: interval,
+    offline_threshold_seconds: offline
+  };
+  try {
+    const result = await apiRequest(HEARTBEAT_DEVICE_API, {method:"POST",body:JSON.stringify(payload)});
+    if (!result.heartbeat_url) throw new Error("设备已创建，但服务端未返回心跳 URL；请检查 Worker 版本");
+    document.getElementById("heartbeatUrl").value = result.heartbeat_url;
+    document.getElementById("heartbeatUrlPanel").style.display = "block";
+    hideHeartbeatForm();
+    setInlineMessage("heartbeatMessage", "心跳设备创建成功。请立即复制下方 URL 并配置到设备端。", false);
+    await loadHeartbeatDevices();
+  } catch (error) {
+    setInlineMessage("heartbeatMessage", "创建心跳设备失败：" + error.message);
+  }
+});
+async function copyHeartbeatUrl() {
+  const input = document.getElementById("heartbeatUrl");
+  if (!input.value) return;
+  try {
+    await navigator.clipboard.writeText(input.value);
+    setInlineMessage("heartbeatMessage", "心跳 URL 已复制", false);
+  } catch (error) {
+    input.focus();
+    input.select();
+    setInlineMessage("heartbeatMessage", "浏览器未允许自动复制，请使用 Ctrl+C 复制已选中的 URL");
+  }
+}
+async function disableHeartbeatDevice(device) {
+  if (!confirm("确定停用心跳设备“" + device.name + "”吗？停用后该设备的心跳 URL 将立即失效。")) return;
+  try {
+    await apiRequest(HEARTBEAT_DEVICE_API + "/" + encodeURIComponent(device.id), {method:"DELETE"});
+    setInlineMessage("heartbeatMessage", "设备已停用", false);
+    await loadHeartbeatDevices();
+  } catch (error) {
+    setInlineMessage("heartbeatMessage", "停用设备失败：" + error.message);
+  }
+}
+
 loadMonitors();
 loadWebhooks();
 loadNotifications();
+loadHeartbeatDevices();
 setInterval(() => {
   loadMonitors();
   loadWebhooks();
   loadNotifications();
+  loadHeartbeatDevices();
 }, 60000);
 </script>
 </body>
