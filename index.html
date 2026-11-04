@@ -369,7 +369,7 @@ footer { color: #8993a2; font-size: 12px; margin: 18px 0; }
     </div>
     <div id="heartbeatMessage" class="inline-message"></div>
     <div id="heartbeatFormPanel" class="panel heartbeat-form">
-      <h2>添加心跳设备</h2>
+      <h2 id="heartbeatFormTitle">添加心跳设备</h2>
       <div style="height:16px"></div>
       <form id="heartbeatForm">
         <div class="form-grid">
@@ -390,18 +390,18 @@ footer { color: #8993a2; font-size: 12px; margin: 18px 0; }
           </div>
         </div>
         <div class="form-actions">
-          <button class="primary" type="submit">创建设备并生成 URL</button>
+          <button id="heartbeatSubmitButton" class="primary" type="submit">创建设备并生成 URL</button>
           <button class="secondary" type="button" onclick="hideHeartbeatForm()">取消</button>
         </div>
       </form>
     </div>
     <div id="heartbeatUrlPanel" class="heartbeat-url-panel" style="display:none">
-      <strong>设备心跳 URL（仅本次创建时显示）</strong>
+      <strong>设备心跳 URL</strong>
       <div class="heartbeat-url-row">
         <input id="heartbeatUrl" type="text" readonly>
         <button class="primary" type="button" onclick="copyHeartbeatUrl()">复制 URL</button>
       </div>
-      <div class="hint">请将完整 URL 填入设备管理界面的「心跳目标链接 URL」。此 URL 包含设备专属 Token，请妥善保管。关闭或刷新页面后不会再次显示；如遗失，请停用旧设备并重新创建。</div>
+      <div class="hint">请将完整 URL 填入设备管理界面的「心跳目标链接 URL」。URL 包含设备专属 Token。后续可在设备列表中随时复制；旧版本设备如无法找回原 URL，可通过重新生成 URL 更新设备配置。</div>
     </div>
     <div class="webhook-table-wrap">
       <table class="webhook-table heartbeat-table">
@@ -1009,8 +1009,12 @@ function renderNotifications(items) {
 
 const HEARTBEAT_DEVICE_API = "/api/heartbeat/devices";
 let heartbeatDevices = [];
+let editingHeartbeatDeviceId = null;
 
 function showHeartbeatAddForm() {
+  editingHeartbeatDeviceId = null;
+  document.getElementById("heartbeatFormTitle").textContent = "添加心跳设备";
+  document.getElementById("heartbeatSubmitButton").textContent = "创建设备并生成 URL";
   document.getElementById("heartbeatForm").reset();
   document.getElementById("heartbeatType").value = "ac";
   document.getElementById("heartbeatInterval").value = 60;
@@ -1020,8 +1024,21 @@ function showHeartbeatAddForm() {
   document.getElementById("heartbeatFormPanel").scrollIntoView({ behavior: "smooth" });
   document.getElementById("heartbeatName").focus();
 }
+function showHeartbeatEditForm(device) {
+  editingHeartbeatDeviceId = device.id;
+  document.getElementById("heartbeatFormTitle").textContent = "编辑心跳设备";
+  document.getElementById("heartbeatSubmitButton").textContent = "保存修改";
+  document.getElementById("heartbeatName").value = device.name || "";
+  document.getElementById("heartbeatCode").value = device.device_code || "";
+  document.getElementById("heartbeatType").value = device.device_type || "other";
+  document.getElementById("heartbeatInterval").value = device.heartbeat_interval_seconds;
+  document.getElementById("heartbeatOffline").value = device.offline_threshold_seconds;
+  document.getElementById("heartbeatFormPanel").style.display = "block";
+  document.getElementById("heartbeatFormPanel").scrollIntoView({behavior:"smooth"});
+}
 function hideHeartbeatForm() {
   document.getElementById("heartbeatFormPanel").style.display = "none";
+  editingHeartbeatDeviceId = null;
 }
 function heartbeatTypeLabel(type) {
   return ({ac:"AC",switch:"交换机",gateway:"网关",server:"服务器",other:"其他"})[type] || type || "-";
@@ -1078,15 +1095,30 @@ function renderHeartbeatDevices() {
       tr.appendChild(td);
     }
     const actionCell = document.createElement("td");
-    if (device.enabled) {
-      const button = document.createElement("button");
-      button.className = "danger";
-      button.textContent = "停用";
-      button.onclick = () => disableHeartbeatDevice(device);
-      actionCell.appendChild(button);
-    } else {
-      actionCell.textContent = "-";
-    }
+    actionCell.className = "actions";
+    const editButton = document.createElement("button");
+    editButton.className = "secondary";
+    editButton.textContent = "编辑";
+    editButton.onclick = () => showHeartbeatEditForm(device);
+    actionCell.appendChild(editButton);
+
+    const urlButton = document.createElement("button");
+    urlButton.className = "secondary";
+    urlButton.textContent = "复制URL";
+    urlButton.onclick = () => copyHeartbeatDeviceUrl(device);
+    actionCell.appendChild(urlButton);
+
+    const stateButton = document.createElement("button");
+    stateButton.className = device.enabled ? "danger" : "primary";
+    stateButton.textContent = device.enabled ? "停用" : "启用";
+    stateButton.onclick = () => setHeartbeatDeviceEnabled(device,!device.enabled);
+    actionCell.appendChild(stateButton);
+
+    const deleteButton = document.createElement("button");
+    deleteButton.className = "danger";
+    deleteButton.textContent = "删除";
+    deleteButton.onclick = () => deleteHeartbeatDevice(device);
+    actionCell.appendChild(deleteButton);
     tr.appendChild(actionCell);
     tbody.appendChild(tr);
   }
@@ -1107,15 +1139,21 @@ document.getElementById("heartbeatForm").addEventListener("submit", async event 
     offline_threshold_seconds: offline
   };
   try {
-    const result = await apiRequest(HEARTBEAT_DEVICE_API, {method:"POST",body:JSON.stringify(payload)});
-    if (!result.heartbeat_url) throw new Error("设备已创建，但服务端未返回心跳 URL；请检查 Worker 版本");
-    document.getElementById("heartbeatUrl").value = result.heartbeat_url;
-    document.getElementById("heartbeatUrlPanel").style.display = "block";
+    const isEditing = Boolean(editingHeartbeatDeviceId);
+    const result = await apiRequest(
+      isEditing ? HEARTBEAT_DEVICE_API + "/" + encodeURIComponent(editingHeartbeatDeviceId) : HEARTBEAT_DEVICE_API,
+      {method:isEditing ? "PUT" : "POST",body:JSON.stringify(payload)}
+    );
+    if (!isEditing) {
+      if (!result.heartbeat_url) throw new Error("设备已创建，但服务端未返回心跳 URL；请检查 Worker 版本");
+      document.getElementById("heartbeatUrl").value = result.heartbeat_url;
+      document.getElementById("heartbeatUrlPanel").style.display = "block";
+    }
     hideHeartbeatForm();
-    setInlineMessage("heartbeatMessage", "心跳设备创建成功。请立即复制下方 URL 并配置到设备端。", false);
+    setInlineMessage("heartbeatMessage", isEditing ? "设备信息已更新" : "心跳设备创建成功。请复制下方 URL 并配置到设备端。", false);
     await loadHeartbeatDevices();
   } catch (error) {
-    setInlineMessage("heartbeatMessage", "创建心跳设备失败：" + error.message);
+    setInlineMessage("heartbeatMessage", (editingHeartbeatDeviceId ? "更新" : "创建") + "心跳设备失败：" + error.message);
   }
 });
 async function copyHeartbeatUrl() {
@@ -1130,14 +1168,53 @@ async function copyHeartbeatUrl() {
     setInlineMessage("heartbeatMessage", "浏览器未允许自动复制，请使用 Ctrl+C 复制已选中的 URL");
   }
 }
-async function disableHeartbeatDevice(device) {
-  if (!confirm("确定停用心跳设备“" + device.name + "”吗？停用后该设备的心跳 URL 将立即失效。")) return;
+async function copyHeartbeatDeviceUrl(device) {
+  const endpoint = HEARTBEAT_DEVICE_API + "/" + encodeURIComponent(device.id) + "/url";
   try {
-    await apiRequest(HEARTBEAT_DEVICE_API + "/" + encodeURIComponent(device.id), {method:"DELETE"});
-    setInlineMessage("heartbeatMessage", "设备已停用", false);
+    let result;
+    try {
+      result = await apiRequest(endpoint);
+    } catch (error) {
+      if (!String(error.message).includes("TOKEN_NOT_RECOVERABLE") &&
+          !String(error.message).toLowerCase().includes("cannot be recovered")) throw error;
+      if (!confirm("该设备是旧版本创建的，原 Token 无法恢复。重新生成 URL 后，旧 URL 会立即失效，必须同步更新设备端配置。是否继续？")) return;
+      result = await apiRequest(HEARTBEAT_DEVICE_API + "/" + encodeURIComponent(device.id) + "/token", {method:"POST"});
+    }
+    const input = document.getElementById("heartbeatUrl");
+    input.value = result.heartbeat_url;
+    document.getElementById("heartbeatUrlPanel").style.display = "block";
+    try {
+      await navigator.clipboard.writeText(result.heartbeat_url);
+      setInlineMessage("heartbeatMessage", "设备心跳 URL 已复制", false);
+    } catch {
+      input.focus(); input.select();
+      setInlineMessage("heartbeatMessage", "浏览器未允许自动复制，请使用 Ctrl+C 复制已选中的 URL");
+    }
+  } catch (error) {
+    setInlineMessage("heartbeatMessage", "获取心跳 URL 失败：" + error.message);
+  }
+}
+async function setHeartbeatDeviceEnabled(device, enabled) {
+  const action = enabled ? "启用" : "停用";
+  if (!confirm("确定" + action + "心跳设备“" + device.name + "”吗？")) return;
+  try {
+    await apiRequest(HEARTBEAT_DEVICE_API + "/" + encodeURIComponent(device.id), {
+      method:"PUT",body:JSON.stringify({enabled})
+    });
+    setInlineMessage("heartbeatMessage", "设备已" + action, false);
     await loadHeartbeatDevices();
   } catch (error) {
-    setInlineMessage("heartbeatMessage", "停用设备失败：" + error.message);
+    setInlineMessage("heartbeatMessage", action + "设备失败：" + error.message);
+  }
+}
+async function deleteHeartbeatDevice(device) {
+  if (!confirm("确定删除心跳设备“" + device.name + "”吗？设备将从列表隐藏，但历史心跳事件和告警通知记录会保留。此操作不能直接撤销。")) return;
+  try {
+    await apiRequest(HEARTBEAT_DEVICE_API + "/" + encodeURIComponent(device.id), {method:"DELETE"});
+    setInlineMessage("heartbeatMessage", "设备已删除，历史记录已保留", false);
+    await loadHeartbeatDevices();
+  } catch (error) {
+    setInlineMessage("heartbeatMessage", "删除设备失败：" + error.message);
   }
 }
 
