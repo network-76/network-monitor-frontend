@@ -610,9 +610,11 @@ function showEditForm(id) {
   document.getElementById("failure").value = m.failure_threshold ?? 3;
   document.getElementById("success").value = m.success_threshold ?? 2;
   document.getElementById("description").value = m.description || "";
-
-  // 编辑时不修改探测地区，避免覆盖已有地区配置
-  document.getElementById("locationsField").style.display = "none";
+  document.getElementById("locations").value = (m.locations || [])
+    .map(location => location.country || "")
+    .filter(Boolean)
+    .join(",");
+  document.getElementById("locationsField").style.display = "";
   document.getElementById("formTitle").textContent = "编辑监控";
   document.getElementById("formPanel").style.display = "block";
   document.getElementById("formPanel").scrollIntoView({ behavior: "smooth" });
@@ -638,11 +640,26 @@ document.getElementById("monitorForm").addEventListener("submit", async event =>
     description: document.getElementById("description").value.trim()
   };
 
+  const locationCodes = document.getElementById("locations").value
+    .split(",")
+    .map(item => item.trim().toUpperCase())
+    .filter(Boolean);
+
+  const existingLocations = editingId
+    ? (monitors.find(item => item.id === editingId)?.locations || [])
+    : [];
+
+  payload.locations = locationCodes.map(country => {
+    const existing = existingLocations.find(
+      location => location.country === country
+    );
+    return {
+      country,
+      limit: existing?.limit ?? 1
+    };
+  });
+
   if (!editingId) {
-    payload.locations = document.getElementById("locations").value
-      .split(",")
-      .map(item => item.trim().toUpperCase())
-      .filter(Boolean);
     payload.enabled = true;
   }
 
