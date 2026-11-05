@@ -251,15 +251,143 @@ Cloudflare 可以通过 Worker 路由、Pages Functions 或其他同源代理方
 
 **不要直接把 Worker 域名填进 HTML，也不要随意添加一个未经验证的路由规则。** 如果当前项目已经能正常通过 Pages 域名调用 API，保留现有转发配置即可。若是全新部署，先在 Cloudflare 中配置好 Pages 域名与 Worker 的同源 API 转发，再进行下一步验证。
 
+
+### 5.4 配置 Cloudflare Access 邮件 PIN 登录（重要）
+
+本项目管理网页使用 Cloudflare Access 保护。用户打开管理页面时，需要输入获准邮箱地址，Cloudflare 会向该邮箱发送一次性 PIN 码；输入正确 PIN 后才能进入系统。
+
+本项目当前使用的 Pages 域名和策略配置如下：
+
+| 配置项 | 当前配置 |
+|---|---|
+| Access 应用类型 | Self-hosted |
+| 应用公共主机名 | `network-monitor-frontend.pages.dev` |
+| Access 策略名称 | `Allow My Email` |
+| 策略动作 | `Allow` |
+| 策略规则 | `Include → Emails → 指定允许登录的邮箱` |
+| 会话持续时间 | `24 hours` |
+| 登录方式 | `One-time PIN`（邮件一次性 PIN） |
+
+#### 第一步：启用 One-time PIN 登录方式
+
+1. 登录 Cloudflare Dashboard。
+2. 进入 **Zero Trust**。
+3. 打开 **Integrations** → **Identity providers**。
+4. 在身份提供程序列表中查看是否已有 **One-time PIN**。
+5. 如果没有，点击 **Add new identity provider**。
+6. 选择 **One-time PIN**，按页面提示添加并保存。
+
+注意：新建的 Zero Trust 组织不一定默认启用 One-time PIN，需要手动添加。当前账户如果已经显示 One-time PIN 已添加，不要重复创建。
+
+官方说明：[Cloudflare One-time PIN 登录文档](https://developers.cloudflare.com/cloudflare-one/integrations/identity-providers/one-time-pin/)
+
+#### 第二步：配置 Access 应用
+
+1. 在 Zero Trust 中进入 **Access** → **Applications**。
+2. 找到已经创建的管理网站应用；如果尚未创建，点击 **Add an application**。
+3. 应用类型选择 **Self-hosted**。
+4. 应用名称可填写：`Network Monitor`。
+5. Public hostname 填写：`network-monitor-frontend.pages.dev`。
+6. 确认应用的登录身份提供程序中包含 **One-time PIN**。
+7. 当前账户还勾选了 **Cloudflare** 身份提供程序；如果保留该选项，登录页面也可能提供 Cloudflare 登录方式。如果只希望用户使用邮件 PIN，则只允许 One-time PIN。
+8. 会话持续时间设置为 `24 hours`。
+9. 保存应用配置。
+
+如果应用已经存在，不要重复创建；检查并调整现有应用即可。
+
+#### 第三步：配置允许登录的邮箱策略
+
+在该 Access 应用的 **Policies** 中添加或检查以下策略：
+
+| 配置项 | 设置值 |
+|---|---|
+| Policy name | `Allow My Email` |
+| Action | `Allow` |
+| Rule type | `Include` |
+| Selector | `Emails` |
+| Value | 填写实际允许登录的邮箱地址 |
+
+操作步骤：
+
+1. 打开 Access 应用的 **Policies**。
+2. 新建策略，名称填写 `Allow My Email`。
+3. Action 选择 **Allow**。
+4. 添加一条规则：**Include** → **Emails**。
+5. 输入允许登录的完整邮箱地址。
+6. 保存策略，并确认它已经关联到 `network-monitor-frontend.pages.dev` 这个应用。
+
+只有匹配 Allow 策略的邮箱才能收到 PIN。不要把规则设置成允许所有邮箱，否则任何人都可能通过自己的邮箱申请登录码。
+
+#### 第四步：为设备心跳接口配置免登录例外
+
+**这一步不能省略。**
+
+当前 AC 设备通过以下形式上报心跳：
+
+```text
+GET https://network-monitor-frontend.pages.dev/api/push/{设备Token}
+```
+
+设备不会输入邮箱，也不会获取 Cloudflare Access 的登录 PIN。如果整个 Pages 域名都要求 Access 登录，设备心跳请求也会被拦截。
+
+因此，需要为心跳上报路径单独配置一个优先级更高的公开访问例外：
+
+1. 在 **Zero Trust** → **Access** → **Applications** 中，新增一个 Self-hosted 应用。
+2. 应用名称填写：`Network Monitor Heartbeat Push`。
+3. Public hostname 填写：`network-monitor-frontend.pages.dev`。
+4. Path 填写：`/api/push/*`。
+5. 为该路径配置 **Bypass** 策略，规则选择 **Include → Everyone**。
+6. 保存。
+
+该路径级应用只用于让设备心跳请求绕过 Cloudflare Access 的邮箱登录，不应扩大到其他管理 API。Cloudflare 对匹配的主机名或路径应用按更具体的路径规则优先处理。
+
+**安全边界：** Bypass 只表示不要求 Cloudflare 邮件 PIN，不代表心跳接口没有鉴权。Worker 仍会校验 URL 中的设备 Token；不要删除或绕过 Worker 的 Token 校验逻辑。其他管理 API 仍由主站的 Access 登录和 Worker 管理 API 鉴权保护。
+
+如果当前 Cloudflare 控制台的应用配置支持在主应用中为指定路径设置 Public override，也可以将 `/api/push/*` 设置为公开访问，效果相同；不要同时配置相互冲突的规则。
+
+#### 第五步：验证邮件 PIN 登录和心跳上报
+
+**验证网页登录：**
+
+1. 使用浏览器无痕窗口打开：
+   `https://network-monitor-frontend.pages.dev`
+2. 页面应跳转到 Cloudflare Access 登录界面。
+3. 输入策略中允许的邮箱地址。
+4. 点击发送登录码。
+5. 检查邮箱，找到 Cloudflare 发来的 PIN。
+6. 将 PIN 输入登录页面。
+7. 验证是否成功进入网络监控管理页面。
+
+**验证未授权邮箱：**
+
+使用不在 `Allow My Email` 策略中的邮箱测试。该邮箱不应获得应用访问权限，也不会收到有效登录 PIN。
+
+**验证 AC 心跳：**
+
+从 AC 或其他设备直接请求系统生成的完整心跳 URL。请求应直接到达 Worker，不应跳转到 Cloudflare Access 登录页面，并且设备状态应正常更新。
+
+#### PIN 登录的几个注意事项
+
+- PIN 是一次性使用的验证码，成功使用后不能重复使用。
+- PIN 自首次请求起 10 分钟后过期。
+- 重新申请 PIN 会使之前的 PIN 失效。
+- 如果邮箱收不到 PIN，先检查邮箱地址是否命中 `Allow My Email` 策略，再检查垃圾邮件和邮件网关。
+- 如果邮件安全系统自动扫描并消费了验证码链接，可能出现 PIN 已使用的提示；可重新申请 PIN，并将 `noreply@notify.cloudflare.com` 加入邮件安全扫描白名单。
+
+官方参考：
+- [One-time PIN 登录配置与行为](https://developers.cloudflare.com/cloudflare-one/integrations/identity-providers/one-time-pin/)
+- [Access 邮箱策略配置示例](https://developers.cloudflare.com/cloudflare-one/access-controls/policies/common-policies/)
+- [Cloudflare Access 路径级保护说明](https://developers.cloudflare.com/workers/configuration/cloudflare-access/)
+
 ---
 
 ## 六、首次部署检查
 
 部署完成后，按以下顺序检查。
 
-### 6.1 检查网页
+### 6.1 检查网页与 Access 登录
 
-打开 Pages 域名：
+先在无痕窗口打开 Pages 域名，确认 Cloudflare Access 邮件 PIN 登录正常；成功登录后再检查网页：
 
 - 页面能正常显示；
 - 浏览器没有明显的 JavaScript 错误；
@@ -393,7 +521,9 @@ D1 保存监控对象、测量历史、心跳设备和告警记录。建议定�
 
 ### 8.3 限制管理页面访问
 
-管理 API 使用 `MONITOR_API_KEY` 校验请求。建议同时使用 Cloudflare Access 等访问控制保护管理页面，避免管理界面直接暴露给所有互联网用户。
+管理网站通过 Cloudflare Access 的邮件 PIN 登录进行访问控制，允许登录的邮箱由 `Allow My Email` 策略限制；Worker 管理 API 还使用 `MONITOR_API_KEY` 校验请求。两层控制各自独立，不要将其视为可以相互替代。
+
+只有设备心跳上报路径 `/api/push/*` 需要绕过 Access 邮件登录，以便 AC 等设备能够直接上报；该路径仍必须通过 Worker 的设备 Token 校验。不要将其他管理 API 设置为 Bypass。
 
 ---
 
@@ -465,6 +595,12 @@ D1 保存监控对象、测量历史、心跳设备和告警记录。建议定�
 - [ ] Cron Trigger 已配置并能正常执行
 - [ ] Pages 已连接 GitHub 仓库并部署成功
 - [ ] Pages 域名的 `/api/*` 已正确转发到 Worker
+- [ ] Cloudflare Access 已启用 One-time PIN 身份提供程序
+- [ ] Access 应用已保护 `network-monitor-frontend.pages.dev`
+- [ ] `Allow My Email` 策略已关联并限制允许登录的邮箱
+- [ ] Access 会话持续时间已设置为 24 hours
+- [ ] `/api/push/*` 已设置 Access Bypass 例外，且 Worker Token 校验仍有效
+- [ ] 邮件 PIN 登录测试成功
 - [ ] 管理页面能正常读取数据
 - [ ] Globalping 测试探测成功
 - [ ] 心跳设备测试成功
