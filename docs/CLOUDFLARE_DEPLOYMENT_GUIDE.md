@@ -18,7 +18,7 @@
 | Globalping | 提供全球网络探测节点和 Ping 测量能力 | 外部 API |
 | Worker Cron Trigger | 定时执行探测、结果轮询和告警处理 | Worker 的定时触发器 |
 
-**重要：** 前端通过相对路径请求 API（例如 `/api/monitors`），所以正式部署时，网页访问域名必须能把这些 `/api/*` 请求转发到本项目的 Worker。不能只部署 Pages 而不配置 API 转发。若当前 Cloudflare 项目已经有可用的 API 转发配置，更新时不要随意改动它。
+**重要：** 本仓库已经包含 Pages Functions 代理文件 `functions/api/[[path]].js`。Pages 将 `/api/*` 请求交给该函数，由函数读取 Pages 环境变量并转发到 Worker Custom Domain。新部署时必须保留该文件及仓库根目录的 `functions` 目录；不需要另外创建 Worker Route 来实现这条代理。
 
 ---
 
@@ -213,12 +213,12 @@ Cron 表达式含义：每分钟触发一次。不要把它设置成每秒执行
 2. 点击 **Create application**。
 3. 选择 **Pages**，再选择 **Connect to Git**。
 4. 授权 Cloudflare 访问 GitHub。
-5. 选择仓库：`network-76/network-monitor-frontend)。
+5. 选择仓库：`network-76/network-monitor-frontend`。
 6. 选择生产分支：`main`。
 
 ### 5.2 配置构建参数
 
-本项目当前是纯静态 HTML 页面，不需要 npm、Node.js 或前端打包。
+本项目是静态 HTML 页面，并通过仓库中的 Pages Functions 提供 API 代理；不需要 npm、Node.js 或前端打包。
 
 建议配置：
 
@@ -227,7 +227,7 @@ Cron 表达式含义：每分钟触发一次。不要把它设置成每秒执行
 | Framework preset | None（无框架） |
 | Build command | 留空 |
 | Build output directory | `/` |
-| Root directory | `/`（如果页面提供此选项） |
+| Root directory | 留空或保持仓库根目录（如果页面提供此选项） |
 
 然后点击 **Save and Deploy**。
 
@@ -265,21 +265,26 @@ Cron 表达式含义：每分钟触发一次。不要把它设置成每秒执行
 - 两处的 `MONITOR_API_KEY` 是同一个管理 API 密钥，值必须完全一致；不要为 Pages 再生成一个不同的密钥。
 - `MONITOR_API_URL` 是后端 API 服务地址，不是 Pages 自身的网址；如果更换 Worker 的自定义域名或 API 入口，应同步更新此值。
 - `MONITOR_API_KEY` 必须使用 Secret 类型，不要使用 Text，也不要把密钥写入 GitHub 仓库或前端源码。
-- 如果还有 Preview 环境需要测试，应在 Preview 环境单独配置对应变量；不要假设 Production 的变量会自动应用到 Preview。
+- 本项目当前只使用 Production，不使用 Preview 部署；因此只需配置 Production 环境变量。不要把本指南中的步骤理解为还需要额外创建 Preview 环境。
 
 ### 5.4 配置 Pages 到 Worker 的 API 转发（非常重要）
 
-当前 `index.html` 使用 `/api/...` 相对路径访问后端。也就是说，用户访问 Pages 域名时，浏览器会向同一个域名请求 API。
+当前前端通过同源相对路径请求 API，例如 `/api/monitors`。仓库已经提供 Pages Functions 代理文件：
 
-因此必须保证：
+- 文件：`functions/api/[[path]].js`
+- 路由：匹配 Pages 域名下的 `/api/*`。
+- 环境变量：读取 Pages Production 的 `MONITOR_API_URL` 和 `MONITOR_API_KEY`。
+- 转发行为：将请求转发到 `MONITOR_API_URL` 下的 `/api/{path}`，并自动添加 `X-Monitor-Key` 请求头。
 
-- `https://<Pages域名>/api/monitors` 等 API 请求实际到达后台 Worker；
-- Worker 的 `/api/*` 路由能够被调用；
-- 页面请求与 API 处于同源访问路径，避免浏览器跨域问题。
+**全新部署必须使用仓库根目录作为 Pages 项目目录，并保留 `functions/api/[[path]].js`。** 不要只上传 `index.html`，也不要删除 `functions` 目录。Pages Functions 会随 Pages 项目一起部署，不需要另建 Worker Route 或在 HTML 中写入 Worker 地址。
 
-Cloudflare 可以通过 Worker 路由、Pages Functions 或其他同源代理方式实现。具体采用哪一种，取决于当前域名和项目绑定方式。
+本项目的 `MONITOR_API_URL` 应填写 Worker Custom Domain 的根地址：
 
-**不要直接把 Worker 域名填进 HTML，也不要随意添加一个未经验证的路由规则。** 如果当前项目已经能正常通过 Pages 域名调用 API，保留现有转发配置即可。若是全新部署，先在 Cloudflare 中配置好 Pages 域名与 Worker 的同源 API 转发，再进行下一步验证。
+```text
+https://network.monitoruptime.kdns.fr
+```
+
+不要在末尾添加 `/api` 或具体接口路径；Pages Function 会自行拼接 `/api/{path}`。Worker Custom Domain 应绑定到本项目的 Worker。
 
 
 ### 5.5 配置 Cloudflare Access 邮件 PIN 登录（重要）
@@ -346,19 +351,15 @@ Cloudflare 可以通过 Worker 路由、Pages Functions 或其他同源代理方
 5. 输入允许登录的完整邮箱地址。
 6. 保存策略，并确认它已经关联到 `network-monitor-frontend.pages.dev` 这个应用。
 
-只有匹配 Allow 策略的邮箱才能收到 PIN。不要把规则设置成允许所有邮箱，否则任何人都可能通过自己的邮箱申请登录码。
+One-time PIN 是身份验证方式，`Allow My Email` 是访问授权策略，两者不是同一个功能。用户通过邮件 PIN 完成身份验证后，Cloudflare Access 还会根据应用策略判断是否允许访问；不在 Include 邮箱名单中的用户不能获得应用访问权限。不要把策略设置成允许所有邮箱。
 
 #### 第四步：为设备心跳接口配置免登录例外
 
 **这一步不能省略。**
 
-当前 AC 设备通过以下形式上报心跳：
+设备心跳使用 Worker 的 `/api/push/{设备Token}` 接口。请注意：当前 Worker 在创建心跳设备时，会根据 Worker 收到请求的 URL 生成完整心跳 URL；由于 Pages Function 将管理 API 转发到 Worker Custom Domain，实际生成的心跳 URL 使用 Worker Custom Domain（当前为 `network.monitoruptime.kdns.fr`），而不是 Pages 域名。
 
-```text
-GET https://network-monitor-frontend.pages.dev/api/push/{设备Token}
-```
-
-设备不会输入邮箱，也不会获取 Cloudflare Access 的登录 PIN。如果整个 Pages 域名都要求 Access 登录，设备心跳请求也会被拦截。
+因此，Pages 域名上的 `/api/push/*` Bypass 只影响通过 Pages 域名访问的心跳请求；它不会自动作用于 Worker Custom Domain。当前 Worker Custom Domain 不应再被另一个 Access 应用要求邮件登录，否则设备无法直接上报。
 
 因此，需要为心跳上报路径单独配置一个优先级更高的公开访问例外：
 
@@ -369,11 +370,11 @@ GET https://network-monitor-frontend.pages.dev/api/push/{设备Token}
 5. 为该路径配置 **Bypass** 策略，规则选择 **Include → Everyone**。
 6. 保存。
 
-该路径级应用只用于让设备心跳请求绕过 Cloudflare Access 的邮箱登录，不应扩大到其他管理 API。Cloudflare 对匹配的主机名或路径应用按更具体的路径规则优先处理。
+该路径级应用只对 Pages 主机名下的 `/api/push/*` 生效。保留你当前已配置的独立 Self-hosted 应用和 Bypass + Everyone 策略即可。它可使通过 Pages 域名访问的心跳路径免于邮件 PIN，但**不能替代对 Worker Custom Domain 的检查**。
 
-**安全边界：** Bypass 只表示不要求 Cloudflare 邮件 PIN，不代表心跳接口没有鉴权。Worker 仍会校验 URL 中的设备 Token；不要删除或绕过 Worker 的 Token 校验逻辑。其他管理 API 仍由主站的 Access 登录和 Worker 管理 API 鉴权保护。
+**重要：** 设备实际使用系统生成的完整心跳 URL。确认 URL 的主机名是 `network.monitoruptime.kdns.fr`，并确认该 Worker Custom Domain 没有被其他 Access 应用保护。如果它被 Access 登录保护，必须调整该域名的访问策略，否则 AC 的 GET 心跳请求会被拦截。
 
-如果当前 Cloudflare 控制台的应用配置支持在主应用中为指定路径设置 Public override，也可以将 `/api/push/*` 设置为公开访问，效果相同；不要同时配置相互冲突的规则。
+**安全边界：** Bypass 只表示不要求 Cloudflare 邮件 PIN，不代表心跳接口没有鉴权。Worker 的 `/api/push/{token}` 仍会通过数据库中的 Token 哈希校验设备身份；不要删除或绕过 Worker 的 Token 校验逻辑。管理 API 则仍需 Worker 管理密钥鉴权。
 
 #### 第五步：验证邮件 PIN 登录和心跳上报
 
@@ -394,7 +395,11 @@ GET https://network-monitor-frontend.pages.dev/api/push/{设备Token}
 
 **验证 AC 心跳：**
 
-从 AC 或其他设备直接请求系统生成的完整心跳 URL。请求应直接到达 Worker，不应跳转到 Cloudflare Access 登录页面，并且设备状态应正常更新。
+1. 在管理页面创建测试心跳设备并复制完整 URL。
+2. 检查 URL 主机名是否为 `network.monitoruptime.kdns.fr`。
+3. 从 AC 或其他设备执行 GET 请求。
+4. 请求应直接到达 Worker，不应跳转到 Cloudflare Access 登录页面；成功时应返回 JSON，设备状态和最近心跳时间应更新。
+5. 如果返回 401，检查设备 Token；如果返回 Access 登录页面，检查该 URL 所属主机名是否被 Access 保护。
 
 #### PIN 登录的几个注意事项
 
@@ -505,18 +510,19 @@ curl -i "将这里替换为系统生成的完整心跳URL"
 
 如果项目后续改为 Git 集成自动部署 Worker，则按对应自动部署流程操作；在没有确认自动部署已配置前，不要假设 GitHub 提交会自动更新 Worker。
 
-### 7.3 增加了数据库迁移文件
+### 7.3 后续版本涉及数据库结构变化
 
-如果代码更新同时新增了 `migrations/xxxx_xxxx.sql`：
+首次部署新建空数据库时，执行完整的 `database/schema.sql`。**已有运行中的数据库不能再次执行完整初始化文件。**
 
-1. 先备份 D1 数据库。
-2. 打开 D1 → 对应数据库 → Console。
-3. 查看本次新增的迁移 SQL。
-4. 确认之前没有执行过该迁移。
-5. 完整执行新增 SQL，并确认成功。
-6. 再部署依赖该字段或数据结构的 Worker 代码。
+如果未来版本明确提供新的数据库升级 SQL：
 
-**数据库迁移通常只执行一次。** 不要因为重复部署代码就重复执行迁移。
+1. 先备份当前 D1 数据库。
+2. 阅读该版本发布说明，确认升级 SQL 对应的版本和适用的旧结构。
+3. 在正确的 D1 数据库 Console 中执行该版本升级 SQL，且只执行一次。
+4. 确认 SQL 成功后，再部署依赖新结构的 Worker 和 Pages 代码。
+5. 记录已执行的升级版本，避免重复执行。
+
+不要自行把完整初始化 SQL 当作升级脚本，也不要在没有升级说明时猜测执行迁移文件。
 
 ### 7.4 更新顺序速查
 
@@ -627,7 +633,8 @@ D1 保存监控对象、测量历史、心跳设备和告警记录。建议定�
 - [ ] Pages Production 已配置 Secret：`MONITOR_API_KEY`（与 Worker 中的值一致）
 - [ ] Pages Production 已配置 Text：`MONITOR_API_URL`（后端 API 基础地址）
 - [ ] Pages 变量配置后已重新部署
-- [ ] Pages 域名的 `/api/*` 已正确转发到 Worker
+- [ ] Pages 项目根目录包含 `functions/api/[[path]].js`，Pages Function 已部署
+- [ ] `MONITOR_API_URL` 指向 Worker Custom Domain 根地址（不带 `/api`）
 - [ ] Cloudflare Access 已启用 One-time PIN 身份提供程序
 - [ ] Access 应用已保护 `network-monitor-frontend.pages.dev`
 - [ ] `Allow My Email` 策略已关联并限制允许登录的邮箱
