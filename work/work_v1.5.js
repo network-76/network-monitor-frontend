@@ -171,7 +171,7 @@ export default {
 
       if (request.method === "GET") return getMonitor(id, env);
       if (request.method === "PUT") return updateMonitor(id, request, env);
-      if (request.method === "DELETE") return disableMonitor(id, env);
+      if (request.method === "DELETE") return deleteMonitor(id, env);
     }
 
     return json({ error: "Not Found" }, 404);
@@ -471,6 +471,7 @@ async function runScheduler(env) {
     SELECT *
     FROM monitors
     WHERE enabled = 1
+      AND deleted_at IS NULL
       AND (
         next_check_at IS NULL
         OR next_check_at <= ?
@@ -994,6 +995,7 @@ async function evaluateMonitorStatus(monitorId, env) {
     SELECT *
     FROM monitors
     WHERE id = ?
+      AND deleted_at IS NULL
   `).bind(monitorId).first();
 
   if (!monitor) {
@@ -1260,6 +1262,7 @@ async function scheduleMonitor(monitor, env) {
       SET next_check_at = ?
       WHERE id = ?
         AND enabled = 1
+        AND deleted_at IS NULL
         AND (
           next_check_at IS NULL
           OR next_check_at <= ?
@@ -1862,7 +1865,7 @@ async function createMonitor(request, env) {
 
 async function listMonitors(url, env) {
   try {
-    const conditions = [];
+    const conditions = ["deleted_at IS NULL"];
     const params = [];
 
     const siteId = url.searchParams.get("site_id");
@@ -1945,7 +1948,7 @@ async function listMonitors(url, env) {
 async function getMonitor(id, env) {
   try {
     const row = await env.DB.prepare(
-      "SELECT * FROM monitors WHERE id = ?"
+      "SELECT * FROM monitors WHERE id = ? AND deleted_at IS NULL"
     ).bind(id).first();
 
     if (!row) return json({ error: "Monitor not found" }, 404);
@@ -2055,11 +2058,12 @@ async function updateMonitor(id, request, env) {
 // 停用监控对象
 // ==================================================
 
-async function disableMonitor(id, env) {
+async function deleteMonitor(id, env) {
   try {
-    const current = await env.DB.prepare(
-      "SELECT id, enabled FROM monitors WHERE id = ?"
-    ).bind(id).first();
+    const current = await env.DB.prepare(`
+      SELECT id FROM monitors
+      WHERE id = ? AND deleted_at IS NULL
+    `).bind(id).first();
 
     if (!current) return json({ error: "Monitor not found" }, 404);
 
@@ -2067,17 +2071,18 @@ async function disableMonitor(id, env) {
 
     await env.DB.prepare(`
       UPDATE monitors
-      SET enabled = 0,
+      SET deleted_at = ?,
+          enabled = 0,
+          next_check_at = NULL,
           updated_at = ?
-      WHERE id = ?
-    `).bind(now, id).run();
+      WHERE id = ? AND deleted_at IS NULL
+    `).bind(now, now, id).run();
 
     return json({
       success: true,
-      message: "Monitor disabled",
+      message: "Monitor deleted",
       id,
-      enabled: false,
-      updated_at: now
+      deleted_at: now
     });
 
   } catch (error) {
