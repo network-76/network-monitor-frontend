@@ -220,13 +220,15 @@ footer { color: #8993a2; font-size: 12px; margin: 18px 0; }
  .heartbeat-table td:last-child::before{flex-basis:100%}.heartbeat-table .actions{justify-content:flex-start}
  .history-summary{grid-template-columns:repeat(2,minmax(0,1fr))}#monitorLatencyChart{height:240px}
 }
+.heartbeat-section .webhook-table-wrap{overflow:visible}
 .heartbeat-actions{display:flex;align-items:center;justify-content:flex-start;gap:7px;white-space:nowrap}
-.heartbeat-more{position:relative;display:inline-block}
-.heartbeat-more>summary{list-style:none;display:flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:5px;background:#e8edf3;color:#26364a;font-size:22px;font-weight:bold;line-height:1;cursor:pointer;user-select:none}
-.heartbeat-more>summary::-webkit-details-marker{display:none}
-.heartbeat-more[open]>summary{background:#dce5ef}
-.heartbeat-more-menu{position:absolute;right:0;top:calc(100% + 5px);z-index:50;display:flex;flex-direction:column;gap:4px;min-width:116px;padding:6px;background:#fff;border:1px solid #dfe5ec;border-radius:7px;box-shadow:0 5px 18px #172b4d24}
+.heartbeat-more{position:relative;display:inline-block;z-index:20}
+.heartbeat-more-trigger{display:flex;align-items:center;justify-content:center;width:30px;height:30px;padding:0;border-radius:5px;background:#e8edf3;color:#26364a;font-size:22px;font-weight:bold;line-height:1;cursor:pointer}
+.heartbeat-more:hover,.heartbeat-more:focus-within,.heartbeat-more.is-open{z-index:100}
+.heartbeat-more-menu{position:absolute;right:0;top:calc(100% + 5px);z-index:9999;display:none;flex-direction:column;gap:4px;min-width:116px;padding:6px;background:#fff;border:1px solid #dfe5ec;border-radius:7px;box-shadow:0 5px 18px #172b4d24}
+.heartbeat-more:hover .heartbeat-more-menu,.heartbeat-more:focus-within .heartbeat-more-menu,.heartbeat-more.is-open .heartbeat-more-menu{display:flex}
 .heartbeat-more-menu button{width:100%;text-align:left;white-space:nowrap;padding:8px 10px;font-size:13px}
+.heartbeat-table td:nth-child(8){white-space:nowrap;font-size:11px}
 .heartbeat-url-panel { margin:0 0 18px; padding:14px; border:1px solid #d7e5f3; border-radius:6px; background:#f7faff; }
 .heartbeat-url-row { display:flex; gap:10px; margin-top:10px; }
 .heartbeat-url-row input { flex:1; min-width:0; border:1px solid #d7dde6; border-radius:5px; padding:10px; font-size:13px; background:white; }
@@ -1282,13 +1284,16 @@ function renderHeartbeatDevices() {
     editButton.onclick=()=>showHeartbeatEditForm(device);
     actionCell.appendChild(editButton);
 
-    const more=document.createElement("details");
+    const more=document.createElement("div");
     more.className="heartbeat-more";
-    const moreSummary=document.createElement("summary");
-    moreSummary.textContent="⋮";
-    moreSummary.setAttribute("aria-label","更多操作");
-    moreSummary.title="更多操作";
-    more.appendChild(moreSummary);
+    const moreTrigger=document.createElement("button");
+    moreTrigger.type="button";
+    moreTrigger.className="heartbeat-more-trigger";
+    moreTrigger.textContent="⋮";
+    moreTrigger.setAttribute("aria-label","更多操作");
+    moreTrigger.title="更多操作";
+    moreTrigger.onclick=event=>{event.stopPropagation();more.classList.toggle("is-open");};
+    more.appendChild(moreTrigger);
     const menu=document.createElement("div");
     menu.className="heartbeat-more-menu";
 
