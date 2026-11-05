@@ -373,7 +373,7 @@ footer { color: #8993a2; font-size: 12px; margin: 18px 0; }
       <div style="height:16px"></div>
       <form id="heartbeatForm">
         <div class="form-grid">
-          <div class="field"><label for="heartbeatName">设备名称 *</label><input id="heartbeatName" maxlength="100" required placeholder="例如：总部 AC"></div>
+          <div class="field"><label for="heartbeatName">监控名称 *</label><input id="heartbeatName" maxlength="100" required placeholder="例如：总部 AC"></div>
           <div class="field"><label for="heartbeatCode">设备编号 *</label><input id="heartbeatCode" maxlength="100" required placeholder="例如：AC-HQ-001"></div>
           <div class="field">
             <label for="heartbeatType">设备类型</label>
@@ -406,11 +406,32 @@ footer { color: #8993a2; font-size: 12px; margin: 18px 0; }
     <div class="webhook-table-wrap">
       <table class="webhook-table heartbeat-table">
         <thead><tr>
-          <th>设备名称</th><th>设备编号</th><th>类型</th><th>状态</th><th>启用状态</th>
+          <th>监控名称</th><th>设备编号</th><th>类型</th><th>状态</th><th>启用状态</th>
           <th>心跳间隔</th><th>离线阈值</th><th>最后心跳时间</th><th>最后来源 IP</th><th>操作</th>
         </tr></thead>
         <tbody id="heartbeatDeviceList"><tr><td colspan="10">正在加载...</td></tr></tbody>
       </table>
+    </div>
+  </div>
+  <div class="panel">
+    <div class="section-toolbar"><h2>全局设置</h2></div>
+    <div class="form-grid">
+      <div class="field">
+        <label for="globalTimeZone">时区</label>
+        <select id="globalTimeZone">
+          <option value="Asia/Shanghai">中国标准时间（Asia/Shanghai，UTC+8）</option>
+          <option value="UTC">协调世界时（UTC）</option>
+          <option value="Asia/Tokyo">日本标准时间（Asia/Tokyo，UTC+9）</option>
+          <option value="America/Los_Angeles">美国太平洋时间（America/Los_Angeles）</option>
+          <option value="America/New_York">美国东部时间（America/New_York）</option>
+          <option value="Europe/London">英国时间（Europe/London）</option>
+        </select>
+        <div class="hint">统一影响网页时间显示和所有 Webhook 告警中的发生时间，默认中国标准时间。</div>
+      </div>
+    </div>
+    <div class="form-actions">
+      <button class="primary" type="button" onclick="saveGlobalSettings()">保存设置</button>
+      <span id="settingsMessage" class="inline-message"></span>
     </div>
   </div>
   <footer>数据来自网络监控服务 · 页面每 60 秒自动刷新</footer>
@@ -427,11 +448,19 @@ function showMessage(message, isError = true) {
   el.style.color = isError ? "#c0392b" : "#18834b";
 }
 
+let currentTimeZone = "Asia/Shanghai";
+
 function formatTime(value) {
   if (!value) return "-";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString("zh-CN", { hour12: false });
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone:currentTimeZone, year:"numeric", month:"2-digit", day:"2-digit",
+    hour:"2-digit", minute:"2-digit", second:"2-digit", hourCycle:"h23"
+  }).formatToParts(date);
+  const part = Object.fromEntries(parts.map(item => [item.type,item.value]));
+  return part.year + "-" + part.month + "-" + part.day + " " +
+    part.hour + ":" + part.minute + ":" + part.second;
 }
 
 function statusLabel(status) {
@@ -669,6 +698,7 @@ let webhooks = [];
 let editingWebhookId = null;
 
 const DEFAULT_WEBHOOK_TEMPLATE = `{
+  "title": "{{status_icon}} 网络监控告警",
   "event": "{{event_type}}",
   "monitor": "{{monitor_name}}",
   "target": "{{target}}",
@@ -1209,7 +1239,7 @@ async function setHeartbeatDeviceEnabled(device, enabled) {
   }
 }
 async function deleteHeartbeatDevice(device) {
-  if (!confirm("确定删除心跳设备“" + device.name + "”吗？设备将从列表隐藏，但历史心跳事件和告警通知记录会保留。此操作不能直接撤销。")) return;
+  if (!confirm("确定删除心跳监控“" + device.name + "”吗？设备将从列表隐藏，但历史心跳事件和告警通知记录会保留。此操作不能直接撤销。")) return;
   try {
     await apiRequest(HEARTBEAT_DEVICE_API + "/" + encodeURIComponent(device.id), {method:"DELETE"});
     setInlineMessage("heartbeatMessage", "设备已删除，历史记录已保留", false);
@@ -1219,10 +1249,45 @@ async function deleteHeartbeatDevice(device) {
   }
 }
 
-loadMonitors();
-loadWebhooks();
-loadNotifications();
-loadHeartbeatDevices();
+const SETTINGS_API = "/api/settings";
+
+async function loadGlobalSettings() {
+  try {
+    const data = await apiRequest(SETTINGS_API);
+    currentTimeZone = data.settings?.time_zone || "Asia/Shanghai";
+    const select = document.getElementById("globalTimeZone");
+    if (![...select.options].some(option => option.value === currentTimeZone)) {
+      const option = document.createElement("option");
+      option.value = currentTimeZone;
+      option.textContent = currentTimeZone;
+      select.appendChild(option);
+    }
+    select.value = currentTimeZone;
+  } catch (error) {
+    setInlineMessage("settingsMessage", "读取全局设置失败：" + error.message);
+  }
+}
+
+async function saveGlobalSettings() {
+  const timeZone = document.getElementById("globalTimeZone").value;
+  try {
+    const data = await apiRequest(SETTINGS_API, {
+      method:"PUT", body:JSON.stringify({time_zone:timeZone})
+    });
+    currentTimeZone = data.settings.time_zone;
+    await Promise.all([loadMonitors(),loadHeartbeatDevices(),loadNotifications()]);
+    setInlineMessage("settingsMessage", "全局时区设置已保存", false);
+  } catch (error) {
+    setInlineMessage("settingsMessage", "保存全局设置失败：" + error.message);
+  }
+}
+
+loadGlobalSettings().then(() => {
+  loadMonitors();
+  loadWebhooks();
+  loadNotifications();
+  loadHeartbeatDevices();
+});
 setInterval(() => {
   loadMonitors();
   loadWebhooks();
