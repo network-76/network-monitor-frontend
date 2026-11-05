@@ -693,7 +693,9 @@ function drawMonitorLatencyChart(data){
  const p={l:52,r:18,t:16,b:38},pw=w-p.l-p.r,ph=h-p.t-p.b,max=Math.max(1,...data.map(v=>v.latency_avg))*1.15;
  ctx.font="11px sans-serif";ctx.fillStyle="#7a8799";ctx.strokeStyle="#e8edf3";
  for(let i=0;i<=4;i++){const y=p.t+ph*i/4;ctx.beginPath();ctx.moveTo(p.l,y);ctx.lineTo(w-p.r,y);ctx.stroke();ctx.fillText((max*(1-i/4)).toFixed(1),5,y+4);}
- const px=i=>p.l+(data.length===1?pw/2:i*pw/(data.length-1)),py=v=>p.t+ph-v/max*ph;
+ const times=data.map(v=>new Date(v.measured_at).getTime()),validTimes=times.every(Number.isFinite);
+ const firstTime=validTimes?times[0]:0,lastTime=validTimes?times[times.length-1]:Math.max(1,data.length-1);
+ const px=i=>p.l+(lastTime===firstTime?pw/2:((validTimes?times[i]:i)/(lastTime===firstTime?1:lastTime-firstTime))*pw),py=v=>p.t+ph-v/max*ph;
  ctx.strokeStyle="#2878c8";ctx.lineWidth=2;ctx.beginPath();data.forEach((v,i)=>i?ctx.lineTo(px(i),py(v.latency_avg)):ctx.moveTo(px(i),py(v.latency_avg)));ctx.stroke();
  ctx.fillStyle="#2878c8";data.forEach((v,i)=>{ctx.beginPath();ctx.arc(px(i),py(v.latency_avg),3,0,Math.PI*2);ctx.fill();});
  ctx.fillStyle="#7a8799";ctx.textAlign="left";ctx.fillText(formatTime(data[0].measured_at),p.l,h-10);ctx.textAlign="right";ctx.fillText(formatTime(data[data.length-1].measured_at),w-p.r,h-10);
