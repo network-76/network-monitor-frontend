@@ -220,6 +220,13 @@ footer { color: #8993a2; font-size: 12px; margin: 18px 0; }
  .heartbeat-table td:last-child::before{flex-basis:100%}.heartbeat-table .actions{justify-content:flex-start}
  .history-summary{grid-template-columns:repeat(2,minmax(0,1fr))}#monitorLatencyChart{height:240px}
 }
+.heartbeat-actions{display:flex;align-items:center;justify-content:flex-start;gap:7px;white-space:nowrap}
+.heartbeat-more{position:relative;display:inline-block}
+.heartbeat-more>summary{list-style:none;display:flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:5px;background:#e8edf3;color:#26364a;font-size:22px;font-weight:bold;line-height:1;cursor:pointer;user-select:none}
+.heartbeat-more>summary::-webkit-details-marker{display:none}
+.heartbeat-more[open]>summary{background:#dce5ef}
+.heartbeat-more-menu{position:absolute;right:0;top:calc(100% + 5px);z-index:50;display:flex;flex-direction:column;gap:4px;min-width:116px;padding:6px;background:#fff;border:1px solid #dfe5ec;border-radius:7px;box-shadow:0 5px 18px #172b4d24}
+.heartbeat-more-menu button{width:100%;text-align:left;white-space:nowrap;padding:8px 10px;font-size:13px}
 .heartbeat-url-panel { margin:0 0 18px; padding:14px; border:1px solid #d7e5f3; border-radius:6px; background:#f7faff; }
 .heartbeat-url-row { display:flex; gap:10px; margin-top:10px; }
 .heartbeat-url-row input { flex:1; min-width:0; border:1px solid #d7dde6; border-radius:5px; padding:10px; font-size:13px; background:white; }
@@ -249,7 +256,7 @@ footer { color: #8993a2; font-size: 12px; margin: 18px 0; }
   <div class="toolbar">
     <h2>监控总览</h2>
     <div>
-      <button class="secondary" onclick="loadMonitors()">刷新</button>
+      <button class="secondary" type="button" onclick="window.location.reload()">刷新整个页面</button>
     </div>
   </div>
 
@@ -1268,30 +1275,44 @@ function renderHeartbeatDevices() {
     addCell(device.name);addCell(device.device_code);addCell(heartbeatTypeLabel(device.device_type));
     const statusCell=addCell("");const badge=document.createElement("span");badge.className="status "+(device.current_status||"UNKNOWN");badge.textContent=heartbeatStatusLabel(device.current_status);statusCell.appendChild(badge);
     addCell(device.enabled?"已启用":"已停用");addCell(device.heartbeat_interval_seconds+" 秒");addCell(device.offline_threshold_seconds+" 秒");addCell(formatTime(device.last_heartbeat_at));addCell(device.last_ip||"-");
-    const actionCell=document.createElement("td");actionCell.dataset.label="操作";actionCell.className="actions";
-    const editButton = document.createElement("button");
-    editButton.className = "secondary";
-    editButton.textContent = "编辑";
-    editButton.onclick = () => showHeartbeatEditForm(device);
+    const actionCell=document.createElement("td");actionCell.dataset.label="操作";actionCell.className="heartbeat-actions";
+    const editButton=document.createElement("button");
+    editButton.className="secondary";
+    editButton.textContent="编辑";
+    editButton.onclick=()=>showHeartbeatEditForm(device);
     actionCell.appendChild(editButton);
 
-    const urlButton = document.createElement("button");
-    urlButton.className = "secondary";
-    urlButton.textContent = "复制URL";
-    urlButton.onclick = () => copyHeartbeatDeviceUrl(device);
-    actionCell.appendChild(urlButton);
+    const more=document.createElement("details");
+    more.className="heartbeat-more";
+    const moreSummary=document.createElement("summary");
+    moreSummary.textContent="⋮";
+    moreSummary.setAttribute("aria-label","更多操作");
+    moreSummary.title="更多操作";
+    more.appendChild(moreSummary);
+    const menu=document.createElement("div");
+    menu.className="heartbeat-more-menu";
 
-    const stateButton = document.createElement("button");
-    stateButton.className = device.enabled ? "danger" : "primary";
-    stateButton.textContent = device.enabled ? "停用" : "启用";
-    stateButton.onclick = () => setHeartbeatDeviceEnabled(device,!device.enabled);
-    actionCell.appendChild(stateButton);
+    const urlButton=document.createElement("button");
+    urlButton.type="button";
+    urlButton.textContent="复制 URL";
+    urlButton.onclick=()=>{more.open=false;copyHeartbeatDeviceUrl(device);};
+    menu.appendChild(urlButton);
 
-    const deleteButton = document.createElement("button");
-    deleteButton.className = "danger";
-    deleteButton.textContent = "删除";
-    deleteButton.onclick = () => deleteHeartbeatDevice(device);
-    actionCell.appendChild(deleteButton);
+    const stateButton=document.createElement("button");
+    stateButton.type="button";
+    stateButton.className=device.enabled?"danger":"primary";
+    stateButton.textContent=device.enabled?"停用":"启用";
+    stateButton.onclick=()=>{more.open=false;setHeartbeatDeviceEnabled(device,!device.enabled);};
+    menu.appendChild(stateButton);
+
+    const deleteButton=document.createElement("button");
+    deleteButton.type="button";
+    deleteButton.className="danger";
+    deleteButton.textContent="删除";
+    deleteButton.onclick=()=>{more.open=false;deleteHeartbeatDevice(device);};
+    menu.appendChild(deleteButton);
+    more.appendChild(menu);
+    actionCell.appendChild(more);
     tr.appendChild(actionCell);
     tbody.appendChild(tr);
   }
