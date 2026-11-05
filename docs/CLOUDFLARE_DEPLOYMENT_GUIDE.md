@@ -59,25 +59,31 @@ D1 用来保存监控系统的数据。
 5. 点击创建。
 6. 打开刚创建的数据库，记下数据库名称，后面绑定 Worker 时要选择它。
 
-### 3.1 初始化数据库表
+### 3.1 初始化数据库（全新部署只执行这一份 SQL）
 
-数据库必须先创建项目所需的基础表，之后才能执行增量迁移。
+本项目已经提供**完整数据库初始化文件**：
 
-在 D1 页面打开 **Console**，按项目提供的 SQL 初始化文件执行建表语句。然后再按编号顺序执行仓库 `migrations/` 目录中的迁移文件。
+- 文件：[`database/schema.sql`](https://github.com/network-76/network-monitor-frontend/blob/main/database/schema.sql)
 
-当前仓库中需要执行的增量迁移包括：
+该文件包含当前版本所需的全部业务表、字段、主键、唯一约束、外键、索引，以及默认时区 `Asia/Shanghai`。它是完整建库脚本，不是追加迁移脚本。
 
-- `migrations/0003_global_time_zone.sql`：创建全局设置表，并初始化默认时区 `Asia/Shanghai`。
-- `migrations/0004_soft_delete_monitors.sql`：为监控对象增加软删除字段，删除监控时保留历史数据。
+按以下步骤操作：
 
-**注意事项：**
+1. 在 D1 页面打开刚创建的 `network-monitor-db`。
+2. 进入 **Console**。
+3. 打开 GitHub 上的 [`database/schema.sql`](https://github.com/network-76/network-monitor-frontend/blob/main/database/schema.sql) 文件。
+4. 复制文件中的全部 SQL（从第一行到最后一行）。
+5. 粘贴到 D1 Console，执行。
+6. 确认执行成功，没有 SQL 错误。
 
-- 如果这是全新数据库，不能只执行 0003 和 0004；必须先执行项目基础建表 SQL。缺少基础表时，迁移会报错。
-- 如果数据库已经运行过 0003 或 0004，不要重复执行相同迁移。
-- 执行 SQL 时，每个文件完整复制到 D1 Console 后执行，并确认页面显示执行成功。
-- 不要在生产数据库中随意执行不清楚用途的 `DROP TABLE`、`DELETE` 或 `ALTER TABLE` 语句。
+**全新数据库只需要执行 `database/schema.sql` 一次。不要再执行 `migrations/0003_global_time_zone.sql` 或 `migrations/0004_soft_delete_monitors.sql`。** 这两个文件所代表的当前结构已经包含在完整初始化文件中：默认时区记录已写入，`monitors.deleted_at` 字段也已包含。
 
-> 如果仓库当前没有提供基础建表 SQL 文件，请先不要猜测表结构或自行创建空表。应从已有正常运行的 D1 数据库导出完整结构，或补齐项目的基础 schema 文件后再进行全新部署。
+注意：
+
+- `_cf_KV` 是 Cloudflare 内部管理的表，不需要也不允许由本项目手动创建。
+- 本 SQL 面向新建的空 D1 数据库。不要在已有业务数据的数据库上重复执行，否则会因为表已存在而报错。
+- 如果是已有数据库，不要重新初始化；继续使用该数据库现有结构。
+- 后续代码版本若新增数据库结构变更，再按该版本明确提供的升级说明执行对应变更；这与首次建库使用的完整 SQL 是两回事。
 
 ---
 
@@ -412,7 +418,7 @@ D1 保存监控对象、测量历史、心跳设备和告警记录。建议定�
 
 - [ ] D1 数据库已创建
 - [ ] 基础数据库表已初始化
-- [ ] 需要的 migration 已按顺序执行
+- [ ] 已完整执行 `database/schema.sql`
 - [ ] Worker 已部署
 - [ ] Worker 已绑定 D1，变量名为 `DB`
 - [ ] 已配置 Secret：`MONITOR_API_KEY`
