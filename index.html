@@ -167,6 +167,7 @@ footer { color: #8993a2; font-size: 12px; margin: 18px 0; }
 }
 
 .webhook-section { margin-top: 24px; }
+.notification-refresh-actions{display:flex;align-items:center;gap:12px}
 .section-toolbar { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:14px; }
 .section-toolbar h2 { margin:0; }
 .webhook-form { display:none; margin:0 0 18px; }
@@ -195,7 +196,30 @@ footer { color: #8993a2; font-size: 12px; margin: 18px 0; }
 
 .heartbeat-section { margin-top: 24px; }
 .heartbeat-form { margin:0; }
-.heartbeat-table { min-width:1250px; }
+.heartbeat-table{min-width:0;width:100%;table-layout:fixed}
+.heartbeat-table th,.heartbeat-table td{padding:9px 6px;font-size:12px;overflow-wrap:anywhere}
+.heartbeat-table .actions{flex-wrap:wrap;min-width:0}
+.history-dialog{width:min(900px,100%)}
+.history-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:12px 0 18px}
+.history-stat{background:#f6f8fb;border:1px solid #e8edf3;border-radius:7px;padding:12px;min-width:0}
+.history-stat-label{color:#748196;font-size:12px}.history-stat-value{font-size:20px;font-weight:650;margin-top:5px;overflow-wrap:anywhere}
+.history-chart-wrap{border:1px solid #e8edf3;border-radius:7px;padding:14px;position:relative}
+.history-chart-title{color:#536174;font-size:13px;margin-bottom:8px}
+#monitorLatencyChart{display:block;width:100%;height:300px}
+.history-empty{position:absolute;inset:45px 12px 12px;display:flex;align-items:center;justify-content:center;color:#8792a2;background:#ffffffdf;font-size:13px}
+@media(max-width:1100px){
+ .heartbeat-section{overflow:visible}.heartbeat-table,.heartbeat-table tbody{display:block;width:100%}.heartbeat-table thead{display:none}
+ .heartbeat-table tr{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 12px;padding:8px 12px;margin-bottom:12px;border:1px solid #e5eaf0;border-radius:7px}
+ .heartbeat-table td{display:flex;justify-content:space-between;gap:10px;min-width:0;padding:9px 2px;border-bottom:1px solid #f0f2f5}
+ .heartbeat-table td::before{content:attr(data-label);color:#7a8799;flex:0 0 40%;font-size:12px}
+ .heartbeat-table td:last-child{grid-column:1/-1;border-bottom:0}.heartbeat-table td:last-child::before{content:"操作"}
+ .heartbeat-table .actions{justify-content:flex-end;flex:1}
+}
+@media(max-width:650px){
+ .heartbeat-table tr{grid-template-columns:1fr}.heartbeat-table td:last-child{grid-column:auto;flex-wrap:wrap}
+ .heartbeat-table td:last-child::before{flex-basis:100%}.heartbeat-table .actions{justify-content:flex-start}
+ .history-summary{grid-template-columns:repeat(2,minmax(0,1fr))}#monitorLatencyChart{height:240px}
+}
 .heartbeat-url-panel { margin:0 0 18px; padding:14px; border:1px solid #d7e5f3; border-radius:6px; background:#f7faff; }
 .heartbeat-url-row { display:flex; gap:10px; margin-top:10px; }
 .heartbeat-url-row input { flex:1; min-width:0; border:1px solid #d7dde6; border-radius:5px; padding:10px; font-size:13px; background:white; }
@@ -237,6 +261,14 @@ footer { color: #8993a2; font-size: 12px; margin: 18px 0; }
     <div class="card"><div class="card-label">已启用</div><div class="card-value" id="enabled">-</div></div>
   </div>
 
+  <div id="monitorHistoryModal" class="modal-overlay" onclick="if(event.target===this) hideMonitorHistory()">
+   <div class="panel modal-dialog history-dialog">
+    <div class="section-toolbar"><h2 id="historyTitle">监控详情</h2><button class="secondary" type="button" onclick="hideMonitorHistory()">关闭</button></div>
+    <div id="historySummary" class="history-summary"></div>
+    <div class="history-chart-wrap"><div class="history-chart-title">Ping 平均延时（ms）</div><canvas id="monitorLatencyChart"></canvas><div id="historyEmpty" class="history-empty" style="display:none"></div></div>
+    <div class="hint">每个时间点代表一次测量；延时为成功探测节点的平均值。失败或无延时数据的测量不会绘制为 0。</div>
+   </div>
+  </div>
   <div id="monitorModal" class="modal-overlay" onclick="if(event.target === this) hideForm()">
   <div id="formPanel" class="panel modal-dialog">
     <h2 id="formTitle">添加监控</h2>
@@ -459,7 +491,7 @@ footer { color: #8993a2; font-size: 12px; margin: 18px 0; }
   <div class="panel webhook-section">
     <div class="section-toolbar">
       <h2>告警通知记录</h2>
-      <button class="secondary" type="button" onclick="loadNotifications()">刷新记录</button>
+<div class="notification-refresh-actions"><span id="notificationRefreshTime" class="small-muted"></span><button id="notificationRefreshButton" class="secondary" type="button" onclick="loadNotifications()">刷新记录</button></div>
     </div>
     <div id="notificationMessage" class="inline-message"></div>
     <div class="webhook-table-wrap">
@@ -608,6 +640,12 @@ function render() {
     const actions = document.createElement("div");
     actions.className = "actions";
 
+    const detailButton = document.createElement("button");
+    detailButton.className = "secondary";
+    detailButton.textContent = "详情";
+    detailButton.onclick = () => showMonitorHistory(monitor);
+    actions.appendChild(detailButton);
+
     const editButton = document.createElement("button");
     editButton.className = "secondary";
     editButton.textContent = "编辑";
@@ -630,6 +668,35 @@ function render() {
     tr.appendChild(actionCell);
     tbody.appendChild(tr);
   }
+}
+
+
+let activeHistoryMonitorId=null;
+function hideMonitorHistory(){document.getElementById("monitorHistoryModal").style.display="none";activeHistoryMonitorId=null;}
+async function showMonitorHistory(monitor){
+ activeHistoryMonitorId=monitor.id;document.getElementById("historyTitle").textContent="监控详情："+monitor.name;
+ document.getElementById("historySummary").replaceChildren();const empty=document.getElementById("historyEmpty");
+ empty.style.display="flex";empty.textContent="正在加载历史数据……";document.getElementById("monitorHistoryModal").style.display="flex";
+ try{const data=await apiRequest(`${API}/${encodeURIComponent(monitor.id)}/history?limit=100`);if(activeHistoryMonitorId!==monitor.id)return;renderMonitorHistory(data.points||[]);}
+ catch(e){empty.style.display="flex";empty.textContent="读取历史数据失败："+e.message;}
+}
+function renderMonitorHistory(points){
+ const valid=points.filter(p=>Number.isFinite(p.latency_avg)&&p.latency_avg>=0),values=valid.map(p=>p.latency_avg),losses=points.map(p=>p.packet_loss).filter(Number.isFinite);
+ const stats=[["有效测量次数",String(valid.length)],["平均延时",values.length?(values.reduce((a,b)=>a+b,0)/values.length).toFixed(2)+" ms":"-"],["最低 / 最高延时",values.length?Math.min(...values).toFixed(2)+" / "+Math.max(...values).toFixed(2)+" ms":"-"],["平均丢包率",losses.length?(losses.reduce((a,b)=>a+b,0)/losses.length).toFixed(2)+"%":"-"]];
+ const box=document.getElementById("historySummary");box.replaceChildren();
+ for(const [label,value] of stats){const item=document.createElement("div");item.className="history-stat";const l=document.createElement("div");l.className="history-stat-label";l.textContent=label;const v=document.createElement("div");v.className="history-stat-value";v.textContent=value;item.append(l,v);box.append(item);}
+ const empty=document.getElementById("historyEmpty");empty.style.display=valid.length?"none":"flex";empty.textContent="暂无可绘制的成功探测数据";drawMonitorLatencyChart(valid);
+}
+function drawMonitorLatencyChart(data){
+ const c=document.getElementById("monitorLatencyChart"),w=c.clientWidth||800,h=c.clientHeight||300,dpr=window.devicePixelRatio||1;c.width=w*dpr;c.height=h*dpr;
+ const ctx=c.getContext("2d");ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,w,h);if(!data.length)return;
+ const p={l:52,r:18,t:16,b:38},pw=w-p.l-p.r,ph=h-p.t-p.b,max=Math.max(1,...data.map(v=>v.latency_avg))*1.15;
+ ctx.font="11px sans-serif";ctx.fillStyle="#7a8799";ctx.strokeStyle="#e8edf3";
+ for(let i=0;i<=4;i++){const y=p.t+ph*i/4;ctx.beginPath();ctx.moveTo(p.l,y);ctx.lineTo(w-p.r,y);ctx.stroke();ctx.fillText((max*(1-i/4)).toFixed(1),5,y+4);}
+ const px=i=>p.l+(data.length===1?pw/2:i*pw/(data.length-1)),py=v=>p.t+ph-v/max*ph;
+ ctx.strokeStyle="#2878c8";ctx.lineWidth=2;ctx.beginPath();data.forEach((v,i)=>i?ctx.lineTo(px(i),py(v.latency_avg)):ctx.moveTo(px(i),py(v.latency_avg)));ctx.stroke();
+ ctx.fillStyle="#2878c8";data.forEach((v,i)=>{ctx.beginPath();ctx.arc(px(i),py(v.latency_avg),3,0,Math.PI*2);ctx.fill();});
+ ctx.fillStyle="#7a8799";ctx.textAlign="left";ctx.fillText(formatTime(data[0].measured_at),p.l,h-10);ctx.textAlign="right";ctx.fillText(formatTime(data[data.length-1].measured_at),w-p.r,h-10);
 }
 
 function showAddForm() {
@@ -1066,13 +1133,15 @@ async function toggleWebhook(item) {
 }
 
 async function loadNotifications() {
-  try {
-    const data = await apiRequest(`${NOTIFICATION_API}?limit=50&offset=0`);
-    renderNotifications(Array.isArray(data.notifications) ? data.notifications : []);
-    setInlineMessage("notificationMessage", "", false);
-  } catch (error) {
-    setInlineMessage("notificationMessage", "读取通知记录失败：" + error.message);
-  }
+ const button=document.getElementById("notificationRefreshButton"),stamp=document.getElementById("notificationRefreshTime");
+ if(button){button.disabled=true;button.textContent="刷新中…";}
+ setInlineMessage("notificationMessage","正在读取最新通知记录…",false);
+ try{const data=await apiRequest(`${NOTIFICATION_API}?limit=50&offset=0`,{cache:"no-store"});
+  const items=Array.isArray(data.notifications)?data.notifications:[];renderNotifications(items);
+  if(stamp)stamp.textContent="最近刷新："+formatTime(new Date().toISOString());
+  setInlineMessage("notificationMessage",`刷新完成，共读取 ${items.length} 条记录`,false);
+ }catch(error){setInlineMessage("notificationMessage","读取通知记录失败："+error.message);}
+ finally{if(button){button.disabled=false;button.textContent="刷新记录";}}
 }
 
 function renderNotifications(items) {
@@ -1192,32 +1261,12 @@ function renderHeartbeatDevices() {
   for (const device of heartbeatDevices) {
     const tr = document.createElement("tr");
     if (!device.enabled) tr.className = "disabled";
-    for (const value of [device.name,device.device_code,heartbeatTypeLabel(device.device_type)]) {
-      const td = document.createElement("td");
-      td.textContent = value ?? "-";
-      tr.appendChild(td);
-    }
-    const statusCell = document.createElement("td");
-    const badge = document.createElement("span");
-    badge.className = "status " + (device.current_status || "UNKNOWN");
-    badge.textContent = heartbeatStatusLabel(device.current_status);
-    statusCell.appendChild(badge);
-    tr.appendChild(statusCell);
-    const enabledCell = document.createElement("td");
-    enabledCell.textContent = device.enabled ? "已启用" : "已停用";
-    tr.appendChild(enabledCell);
-    for (const value of [
-      device.heartbeat_interval_seconds + " 秒",
-      device.offline_threshold_seconds + " 秒",
-      formatTime(device.last_heartbeat_at),
-      device.last_ip || "-"
-    ]) {
-      const td = document.createElement("td");
-      td.textContent = value;
-      tr.appendChild(td);
-    }
-    const actionCell = document.createElement("td");
-    actionCell.className = "actions";
+    const labels=["监控名称","设备编号","类型","状态","启用状态","心跳间隔","离线阈值","最后心跳时间","最后来源 IP"];let li=0;
+    function addCell(value){const td=document.createElement("td");td.dataset.label=labels[li++];td.textContent=value??"-";tr.appendChild(td);return td;}
+    addCell(device.name);addCell(device.device_code);addCell(heartbeatTypeLabel(device.device_type));
+    const statusCell=addCell("");const badge=document.createElement("span");badge.className="status "+(device.current_status||"UNKNOWN");badge.textContent=heartbeatStatusLabel(device.current_status);statusCell.appendChild(badge);
+    addCell(device.enabled?"已启用":"已停用");addCell(device.heartbeat_interval_seconds+" 秒");addCell(device.offline_threshold_seconds+" 秒");addCell(formatTime(device.last_heartbeat_at));addCell(device.last_ip||"-");
+    const actionCell=document.createElement("td");actionCell.dataset.label="操作";actionCell.className="actions";
     const editButton = document.createElement("button");
     editButton.className = "secondary";
     editButton.textContent = "编辑";
@@ -1388,6 +1437,7 @@ document.addEventListener("keydown", event => {
   if (event.key === "Escape") {
     hideForm();
     hideHeartbeatForm();
+    hideMonitorHistory();
   }
 });
 
