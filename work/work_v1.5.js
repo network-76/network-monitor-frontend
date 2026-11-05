@@ -2866,6 +2866,7 @@ async function processPendingHeartbeatNotifications(env) {
     const eventType = row.current_status === "DOWN" ? "down" : "up";
     const values = {
       event_type:eventType,
+      is_heartbeat:true,
       monitor_name:row.device_name,
       device_name:row.device_name,
       device_code:row.device_code,
@@ -2901,7 +2902,7 @@ async function processPendingHeartbeatNotifications(env) {
 }
 
 function renderWebhookTemplate(template, values) {
-  return template.replace(/{{\s*([a-z_]+)\s*}}/gi, (match, key) => {
+  const rendered = template.replace(/{{\s*([a-z_]+)\s*}}/gi, (match, key) => {
     const value = values[key.toLowerCase()];
 
     return value === undefined || value === null ? "" :
@@ -2911,6 +2912,21 @@ function renderWebhookTemplate(template, values) {
         .replace(/\r/g, "\\r")
         .replace(/\n/g, "\\n");
   });
+
+  // Heartbeat devices have no network target address. Remove the target
+  // property from JSON payloads rather than sending an empty target field.
+  if (values.is_heartbeat === true) {
+    try {
+      const payload = JSON.parse(rendered);
+      if (payload && typeof payload === "object" && !Array.isArray(payload)) {
+        delete payload.target;
+        return JSON.stringify(payload, null, 2);
+      }
+    } catch {
+      // Preserve non-JSON custom templates as rendered.
+    }
+  }
+  return rendered;
 }
 
 // ==================================================
