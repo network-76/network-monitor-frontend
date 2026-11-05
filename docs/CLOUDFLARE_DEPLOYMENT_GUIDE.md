@@ -188,7 +188,7 @@ Worker 负责 API、探测调度、结果轮询、心跳离线判断和 Webhook 
 2. 找到 **Settings** → **Triggers**（部分界面会把 Cron 放在 Triggers 页面）。
 3. 找到 **Cron Triggers**。
 4. 点击添加 Cron。
-5. 建议先配置：`* * * * *`（每分钟执行一次）。
+5. 建议先配置：`*/1 * * * *`（每分钟执行一次）。
 6. 保存。
 
 Cron 表达式含义：每分钟触发一次。不要把它设置成每秒执行；Cloudflare Cron 使用五段式表达式。
