@@ -237,7 +237,37 @@ Cron 表达式含义：每分钟触发一次。不要把它设置成每秒执行
 
 打开该地址，应该能看到“网络监控管理系统”页面。
 
-### 5.3 配置 Pages 到 Worker 的 API 转发（非常重要）
+
+### 5.3 配置 Pages 项目的环境变量和密钥（重要）
+
+除了 Worker 中配置的三个 Secret，**Cloudflare Pages 项目本身也需要配置两个变量**。这两个配置属于 Pages 项目，不要误填到 Worker 的 Variables and Secrets 中。
+
+进入 Cloudflare Dashboard → **Workers & Pages** → 选择 Pages 项目 `network-monitor-frontend` → **Settings** → **Environment variables**（不同版本界面可能显示为 Variables and Secrets），在 **Production** 环境中添加：
+
+| 名称 | 类型 | 值 | 说明 |
+|---|---|---|---|
+| `MONITOR_API_KEY` | Secret（密钥） | 与 Worker 中 `MONITOR_API_KEY` 完全相同 | Pages 侧调用后端 API 时使用的管理 API 密钥 |
+| `MONITOR_API_URL` | Text（文本） | `https://network.monitoruptime.kdns.fr` | 后端 Worker API 的基础地址 |
+
+配置步骤：
+
+1. 打开 Pages 项目 `network-monitor-frontend`。
+2. 进入 **Settings**，找到 **Environment variables** 或 **Variables and Secrets**。
+3. 在 **Production** 环境下添加 `MONITOR_API_KEY`，类型选择 **Secret**，值填写 Worker 项目中配置的同一个 `MONITOR_API_KEY`。
+4. 添加 `MONITOR_API_URL`，类型选择 **Text**，值填写当前后端 API 地址：`https://network.monitoruptime.kdns.fr`。
+5. 保存配置。
+6. 变量新增或修改后，重新部署 Pages（可在 **Deployments** 中对最新生产部署执行 Retry deployment，或提交一次代码变更触发新部署），使新配置应用到部署环境。
+
+**注意区分 Pages 与 Worker 的变量：**
+
+- Worker 仍需配置三个 Secret：`GLOBALPING_TOKEN`、`MONITOR_API_KEY`、`HEARTBEAT_TOKEN_ENCRYPTION_KEY`。
+- Pages 另需配置上表中的两个变量：`MONITOR_API_KEY` 和 `MONITOR_API_URL`。
+- 两处的 `MONITOR_API_KEY` 是同一个管理 API 密钥，值必须完全一致；不要为 Pages 再生成一个不同的密钥。
+- `MONITOR_API_URL` 是后端 API 服务地址，不是 Pages 自身的网址；如果更换 Worker 的自定义域名或 API 入口，应同步更新此值。
+- `MONITOR_API_KEY` 必须使用 Secret 类型，不要使用 Text，也不要把密钥写入 GitHub 仓库或前端源码。
+- 如果还有 Preview 环境需要测试，应在 Preview 环境单独配置对应变量；不要假设 Production 的变量会自动应用到 Preview。
+
+### 5.4 配置 Pages 到 Worker 的 API 转发（非常重要）
 
 当前 `index.html` 使用 `/api/...` 相对路径访问后端。也就是说，用户访问 Pages 域名时，浏览器会向同一个域名请求 API。
 
@@ -252,7 +282,7 @@ Cloudflare 可以通过 Worker 路由、Pages Functions 或其他同源代理方
 **不要直接把 Worker 域名填进 HTML，也不要随意添加一个未经验证的路由规则。** 如果当前项目已经能正常通过 Pages 域名调用 API，保留现有转发配置即可。若是全新部署，先在 Cloudflare 中配置好 Pages 域名与 Worker 的同源 API 转发，再进行下一步验证。
 
 
-### 5.4 配置 Cloudflare Access 邮件 PIN 登录（重要）
+### 5.5 配置 Cloudflare Access 邮件 PIN 登录（重要）
 
 本项目管理网页使用 Cloudflare Access 保护。用户打开管理页面时，需要输入获准邮箱地址，Cloudflare 会向该邮箱发送一次性 PIN 码；输入正确 PIN 后才能进入系统。
 
@@ -594,6 +624,9 @@ D1 保存监控对象、测量历史、心跳设备和告警记录。建议定�
 - [ ] 已配置 Secret：`HEARTBEAT_TOKEN_ENCRYPTION_KEY`
 - [ ] Cron Trigger 已配置并能正常执行
 - [ ] Pages 已连接 GitHub 仓库并部署成功
+- [ ] Pages Production 已配置 Secret：`MONITOR_API_KEY`（与 Worker 中的值一致）
+- [ ] Pages Production 已配置 Text：`MONITOR_API_URL`（后端 API 基础地址）
+- [ ] Pages 变量配置后已重新部署
 - [ ] Pages 域名的 `/api/*` 已正确转发到 Worker
 - [ ] Cloudflare Access 已启用 One-time PIN 身份提供程序
 - [ ] Access 应用已保护 `network-monitor-frontend.pages.dev`
