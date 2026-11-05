@@ -16,10 +16,35 @@ body {
 header {
   background: #172b4d;
   color: white;
-  padding: 20px 32px;
+  padding: 15px 32px;
   font-size: 21px;
   font-weight: bold;
 }
+.header-inner {
+  max-width: 1250px;
+  margin: 0 auto;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 18px;
+}
+.header-settings {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 13px;
+  font-weight: normal;
+}
+.header-settings select {
+  max-width: 250px;
+  border: 1px solid #52647e;
+  border-radius: 5px;
+  padding: 7px 9px;
+  background: #fff;
+  color: #202938;
+  font-size: 13px;
+}
+.header-settings-message { font-size: 12px; color: #dce8f7; min-width: 55px; }
 main { max-width: 1250px; margin: 28px auto; padding: 0 20px; }
 .toolbar {
   display: flex;
@@ -81,7 +106,25 @@ th { color: #69778b; font-weight: 600; background: #fafbfd; }
 .actions { display: flex; gap: 7px; }
 .actions button { padding: 6px 10px; font-size: 12px; }
 #message { margin: 12px 0; color: #c0392b; font-size: 14px; }
-#formPanel { display: none; margin-bottom: 22px; }
+.modal-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  align-items: center;
+  justify-content: center;
+  padding: 22px;
+  background: rgba(15, 25, 42, 0.58);
+}
+.modal-dialog {
+  display: block;
+  width: min(760px, 100%);
+  max-height: calc(100vh - 44px);
+  overflow-y: auto;
+  margin: 0;
+}
+.monitor-toolbar-actions { display:flex; align-items:center; gap:12px; }
+#formPanel { display: block; }
 .form-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -110,11 +153,17 @@ footer { color: #8993a2; font-size: 12px; margin: 18px 0; }
   .panel { overflow-x: auto; }
   table { min-width: 850px; }
 }
-@media(max-width: 550px) {
-  header { padding: 17px 18px; }
+@media(max-width: 650px) {
+  header { padding: 14px 18px; }
+  .header-inner { align-items: flex-start; flex-direction: column; }
+  .header-settings { width: 100%; flex-wrap: wrap; }
+  .header-settings select { flex: 1; min-width: 180px; }
   .form-grid { grid-template-columns: 1fr; }
   .full { grid-column: auto; }
   .toolbar { align-items: flex-start; }
+  .monitor-toolbar-actions { flex-wrap: wrap; justify-content: flex-end; }
+  .modal-overlay { padding: 10px; }
+  .modal-dialog { max-height: calc(100vh - 20px); padding: 16px; }
 }
 
 .webhook-section { margin-top: 24px; }
@@ -145,7 +194,7 @@ footer { color: #8993a2; font-size: 12px; margin: 18px 0; }
 
 
 .heartbeat-section { margin-top: 24px; }
-.heartbeat-form { display:none; margin:0 0 18px; }
+.heartbeat-form { margin:0; }
 .heartbeat-table { min-width:1250px; }
 .heartbeat-url-panel { margin:0 0 18px; padding:14px; border:1px solid #d7e5f3; border-radius:6px; background:#f7faff; }
 .heartbeat-url-row { display:flex; gap:10px; margin-top:10px; }
@@ -154,14 +203,29 @@ footer { color: #8993a2; font-size: 12px; margin: 18px 0; }
 </style>
 </head>
 <body>
-<header>网络监控管理系统</header>
+<header>
+  <div class="header-inner">
+    <span>网络监控管理系统</span>
+    <div class="header-settings">
+      <label for="globalTimeZone">时区</label>
+      <select id="globalTimeZone" onchange="saveGlobalSettings()">
+        <option value="Asia/Shanghai">中国标准时间（UTC+8）</option>
+        <option value="UTC">协调世界时（UTC）</option>
+        <option value="Asia/Tokyo">日本标准时间（UTC+9）</option>
+        <option value="America/Los_Angeles">美国太平洋时间</option>
+        <option value="America/New_York">美国东部时间</option>
+        <option value="Europe/London">英国时间</option>
+      </select>
+      <span id="settingsMessage" class="header-settings-message"></span>
+    </div>
+  </div>
+</header>
 
 <main>
   <div class="toolbar">
     <h2>监控总览</h2>
     <div>
       <button class="secondary" onclick="loadMonitors()">刷新</button>
-      <button class="primary" onclick="showAddForm()">+ 添加监控</button>
     </div>
   </div>
 
@@ -173,7 +237,8 @@ footer { color: #8993a2; font-size: 12px; margin: 18px 0; }
     <div class="card"><div class="card-label">已启用</div><div class="card-value" id="enabled">-</div></div>
   </div>
 
-  <div id="formPanel" class="panel">
+  <div id="monitorModal" class="modal-overlay" onclick="if(event.target === this) hideForm()">
+  <div id="formPanel" class="panel modal-dialog">
     <h2 id="formTitle">添加监控</h2>
     <div style="height:16px"></div>
     <form id="monitorForm">
@@ -222,11 +287,68 @@ footer { color: #8993a2; font-size: 12px; margin: 18px 0; }
       </div>
     </form>
   </div>
+  </div>
 
+  <div class="panel heartbeat-section">
+    <div class="section-toolbar">
+      <h2>心跳设备</h2>
+      <button class="primary" type="button" onclick="showHeartbeatAddForm()">+ 添加心跳设备</button>
+    </div>
+    <div id="heartbeatMessage" class="inline-message"></div>
+    <div id="heartbeatModal" class="modal-overlay" onclick="if(event.target === this) hideHeartbeatForm()">
+    <div id="heartbeatFormPanel" class="panel heartbeat-form modal-dialog">
+      <h2 id="heartbeatFormTitle">添加心跳设备</h2>
+      <div style="height:16px"></div>
+      <form id="heartbeatForm">
+        <div class="form-grid">
+          <div class="field"><label for="heartbeatName">监控名称 *</label><input id="heartbeatName" maxlength="100" required placeholder="例如：总部 AC"></div>
+          <div class="field"><label for="heartbeatCode">设备编号 *</label><input id="heartbeatCode" maxlength="100" required placeholder="例如：AC-HQ-001"></div>
+          <div class="field">
+            <label for="heartbeatType">设备类型</label>
+            <select id="heartbeatType">
+              <option value="ac">AC</option><option value="switch">交换机</option>
+              <option value="gateway">网关</option><option value="server">服务器</option><option value="other">其他</option>
+            </select>
+          </div>
+          <div class="field"><label for="heartbeatInterval">心跳间隔（秒）</label><input id="heartbeatInterval" type="number" min="10" max="86400" value="60" required></div>
+          <div class="field">
+            <label for="heartbeatOffline">离线判定阈值（秒）</label>
+            <input id="heartbeatOffline" type="number" min="10" max="604800" value="180" required>
+            <div class="hint">必须大于或等于心跳间隔</div>
+          </div>
+        </div>
+        <div class="form-actions">
+          <button id="heartbeatSubmitButton" class="primary" type="submit">创建设备并生成 URL</button>
+          <button class="secondary" type="button" onclick="hideHeartbeatForm()">取消</button>
+        </div>
+      </form>
+    </div>
+    </div>
+    <div id="heartbeatUrlPanel" class="heartbeat-url-panel" style="display:none">
+      <strong>设备心跳 URL</strong>
+      <div class="heartbeat-url-row">
+        <input id="heartbeatUrl" type="text" readonly>
+        <button class="primary" type="button" onclick="copyHeartbeatUrl()">复制 URL</button>
+      </div>
+      <div class="hint">请将完整 URL 填入设备管理界面的「心跳目标链接 URL」。URL 包含设备专属 Token。后续可在设备列表中随时复制；旧版本设备如无法找回原 URL，可通过重新生成 URL 更新设备配置。</div>
+    </div>
+    <div class="webhook-table-wrap">
+      <table class="webhook-table heartbeat-table">
+        <thead><tr>
+          <th>监控名称</th><th>设备编号</th><th>类型</th><th>状态</th><th>启用状态</th>
+          <th>心跳间隔</th><th>离线阈值</th><th>最后心跳时间</th><th>最后来源 IP</th><th>操作</th>
+        </tr></thead>
+        <tbody id="heartbeatDeviceList"><tr><td colspan="10">正在加载...</td></tr></tbody>
+      </table>
+    </div>
+  </div>
   <div class="panel">
-    <div class="toolbar">
+    <div class="section-toolbar">
       <h2>监控对象</h2>
-      <span id="listCount" style="color:#8993a2;font-size:13px"></span>
+      <div class="monitor-toolbar-actions">
+        <span id="listCount" class="small-muted"></span>
+        <button class="primary" type="button" onclick="showAddForm()">+ 添加监控</button>
+      </div>
     </div>
     <div id="message"></div>
     <table>
@@ -362,78 +484,6 @@ footer { color: #8993a2; font-size: 12px; margin: 18px 0; }
     <div class="hint">仅显示最近 50 条通知记录。测试发送不会写入此记录；正式 DOWN / UP 状态变化才会生成通知。</div>
   </div>
 
-  <div class="panel heartbeat-section">
-    <div class="section-toolbar">
-      <h2>心跳设备</h2>
-      <button class="primary" type="button" onclick="showHeartbeatAddForm()">+ 添加心跳设备</button>
-    </div>
-    <div id="heartbeatMessage" class="inline-message"></div>
-    <div id="heartbeatFormPanel" class="panel heartbeat-form">
-      <h2 id="heartbeatFormTitle">添加心跳设备</h2>
-      <div style="height:16px"></div>
-      <form id="heartbeatForm">
-        <div class="form-grid">
-          <div class="field"><label for="heartbeatName">监控名称 *</label><input id="heartbeatName" maxlength="100" required placeholder="例如：总部 AC"></div>
-          <div class="field"><label for="heartbeatCode">设备编号 *</label><input id="heartbeatCode" maxlength="100" required placeholder="例如：AC-HQ-001"></div>
-          <div class="field">
-            <label for="heartbeatType">设备类型</label>
-            <select id="heartbeatType">
-              <option value="ac">AC</option><option value="switch">交换机</option>
-              <option value="gateway">网关</option><option value="server">服务器</option><option value="other">其他</option>
-            </select>
-          </div>
-          <div class="field"><label for="heartbeatInterval">心跳间隔（秒）</label><input id="heartbeatInterval" type="number" min="10" max="86400" value="60" required></div>
-          <div class="field">
-            <label for="heartbeatOffline">离线判定阈值（秒）</label>
-            <input id="heartbeatOffline" type="number" min="10" max="604800" value="180" required>
-            <div class="hint">必须大于或等于心跳间隔</div>
-          </div>
-        </div>
-        <div class="form-actions">
-          <button id="heartbeatSubmitButton" class="primary" type="submit">创建设备并生成 URL</button>
-          <button class="secondary" type="button" onclick="hideHeartbeatForm()">取消</button>
-        </div>
-      </form>
-    </div>
-    <div id="heartbeatUrlPanel" class="heartbeat-url-panel" style="display:none">
-      <strong>设备心跳 URL</strong>
-      <div class="heartbeat-url-row">
-        <input id="heartbeatUrl" type="text" readonly>
-        <button class="primary" type="button" onclick="copyHeartbeatUrl()">复制 URL</button>
-      </div>
-      <div class="hint">请将完整 URL 填入设备管理界面的「心跳目标链接 URL」。URL 包含设备专属 Token。后续可在设备列表中随时复制；旧版本设备如无法找回原 URL，可通过重新生成 URL 更新设备配置。</div>
-    </div>
-    <div class="webhook-table-wrap">
-      <table class="webhook-table heartbeat-table">
-        <thead><tr>
-          <th>监控名称</th><th>设备编号</th><th>类型</th><th>状态</th><th>启用状态</th>
-          <th>心跳间隔</th><th>离线阈值</th><th>最后心跳时间</th><th>最后来源 IP</th><th>操作</th>
-        </tr></thead>
-        <tbody id="heartbeatDeviceList"><tr><td colspan="10">正在加载...</td></tr></tbody>
-      </table>
-    </div>
-  </div>
-  <div class="panel">
-    <div class="section-toolbar"><h2>全局设置</h2></div>
-    <div class="form-grid">
-      <div class="field">
-        <label for="globalTimeZone">时区</label>
-        <select id="globalTimeZone">
-          <option value="Asia/Shanghai">中国标准时间（Asia/Shanghai，UTC+8）</option>
-          <option value="UTC">协调世界时（UTC）</option>
-          <option value="Asia/Tokyo">日本标准时间（Asia/Tokyo，UTC+9）</option>
-          <option value="America/Los_Angeles">美国太平洋时间（America/Los_Angeles）</option>
-          <option value="America/New_York">美国东部时间（America/New_York）</option>
-          <option value="Europe/London">英国时间（Europe/London）</option>
-        </select>
-        <div class="hint">统一影响网页时间显示和所有 Webhook 告警中的发生时间，默认中国标准时间。</div>
-      </div>
-    </div>
-    <div class="form-actions">
-      <button class="primary" type="button" onclick="saveGlobalSettings()">保存设置</button>
-      <span id="settingsMessage" class="inline-message"></span>
-    </div>
-  </div>
   <footer>数据来自网络监控服务 · 页面每 60 秒自动刷新</footer>
 </main>
 
@@ -593,7 +643,7 @@ function showAddForm() {
   document.getElementById("locations").value = "US,DE,JP";
   document.getElementById("locationsField").style.display = "";
   document.getElementById("formTitle").textContent = "添加监控";
-  document.getElementById("formPanel").style.display = "block";
+  document.getElementById("monitorModal").style.display = "flex";
   document.getElementById("name").focus();
 }
 
@@ -616,12 +666,11 @@ function showEditForm(id) {
     .join(",");
   document.getElementById("locationsField").style.display = "";
   document.getElementById("formTitle").textContent = "编辑监控";
-  document.getElementById("formPanel").style.display = "block";
-  document.getElementById("formPanel").scrollIntoView({ behavior: "smooth" });
+  document.getElementById("monitorModal").style.display = "flex";
 }
 
 function hideForm() {
-  document.getElementById("formPanel").style.display = "none";
+  document.getElementById("monitorModal").style.display = "none";
   editingId = null;
 }
 
@@ -1095,8 +1144,7 @@ function showHeartbeatAddForm() {
   document.getElementById("heartbeatInterval").value = 60;
   document.getElementById("heartbeatOffline").value = 180;
   document.getElementById("heartbeatUrlPanel").style.display = "none";
-  document.getElementById("heartbeatFormPanel").style.display = "block";
-  document.getElementById("heartbeatFormPanel").scrollIntoView({ behavior: "smooth" });
+  document.getElementById("heartbeatModal").style.display = "flex";
   document.getElementById("heartbeatName").focus();
 }
 function showHeartbeatEditForm(device) {
@@ -1108,11 +1156,10 @@ function showHeartbeatEditForm(device) {
   document.getElementById("heartbeatType").value = device.device_type || "other";
   document.getElementById("heartbeatInterval").value = device.heartbeat_interval_seconds;
   document.getElementById("heartbeatOffline").value = device.offline_threshold_seconds;
-  document.getElementById("heartbeatFormPanel").style.display = "block";
-  document.getElementById("heartbeatFormPanel").scrollIntoView({behavior:"smooth"});
+  document.getElementById("heartbeatModal").style.display = "flex";
 }
 function hideHeartbeatForm() {
-  document.getElementById("heartbeatFormPanel").style.display = "none";
+  document.getElementById("heartbeatModal").style.display = "none";
   editingHeartbeatDeviceId = null;
 }
 function heartbeatTypeLabel(type) {
@@ -1313,18 +1360,36 @@ async function loadGlobalSettings() {
 }
 
 async function saveGlobalSettings() {
-  const timeZone = document.getElementById("globalTimeZone").value;
+  const select = document.getElementById("globalTimeZone");
+  const previousTimeZone = currentTimeZone;
+  const timeZone = select.value;
+
+  // 先立即切换页面显示，再将设置持久化到服务端。
+  currentTimeZone = timeZone;
+  await Promise.all([loadMonitors(),loadHeartbeatDevices(),loadNotifications()]);
+
   try {
     const data = await apiRequest(SETTINGS_API, {
       method:"PUT", body:JSON.stringify({time_zone:timeZone})
     });
     currentTimeZone = data.settings.time_zone;
+    select.value = currentTimeZone;
     await Promise.all([loadMonitors(),loadHeartbeatDevices(),loadNotifications()]);
-    setInlineMessage("settingsMessage", "全局时区设置已保存", false);
+    setInlineMessage("settingsMessage", "已应用", false);
   } catch (error) {
-    setInlineMessage("settingsMessage", "保存全局设置失败：" + error.message);
+    currentTimeZone = previousTimeZone;
+    select.value = previousTimeZone;
+    await Promise.all([loadMonitors(),loadHeartbeatDevices(),loadNotifications()]);
+    setInlineMessage("settingsMessage", "时区保存失败：" + error.message);
   }
 }
+
+document.addEventListener("keydown", event => {
+  if (event.key === "Escape") {
+    hideForm();
+    hideHeartbeatForm();
+  }
+});
 
 loadGlobalSettings().then(() => {
   loadMonitors();
