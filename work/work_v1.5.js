@@ -154,7 +154,7 @@ export default {
       return listMonitors(url, env);
     }
 
-    const match = url.pathname.match(/^\/api\/monitors\/([^/]+)$/);
+    const match = url.pathname.match(/^\/api\/monitors\/([^/]+)(\/history)?$/);
 
     if (match) {
       let id;
@@ -169,7 +169,7 @@ export default {
         return json({ error: "Invalid monitor ID" }, 400);
       }
 
-      if (request.method === "GET" && url.pathname.endsWith("/history")) return getMonitorHistory(id, url, env);
+      if (request.method === "GET" && match[2] === "/history") return getMonitorHistory(id, url, env);
       if (request.method === "GET") return getMonitor(id, env);
       if (request.method === "PUT") return updateMonitor(id, request, env);
       if (request.method === "DELETE") return deleteMonitor(id, env);
