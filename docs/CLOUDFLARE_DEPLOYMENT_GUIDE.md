@@ -40,11 +40,48 @@
 
 Token 相当于密码，不要发到群聊、不要提交到 GitHub，也不要写进 `index.html`。
 
-### 2.2 准备管理密钥
+### 2.2 生成 Worker 所需密钥
 
-本项目 Worker 使用环境变量 `MONITOR_API_KEY` 保护管理 API。
+本项目 Worker 需要配置三个 Secret，名称必须完全一致：
 
-建议生成一段足够长的随机字符串（至少 32 字符，建议 64 字符），例如使用密码管理器生成。不要直接使用文档中的示例字符串，也不要把密钥提交到代码仓库。
+| Secret 名称 | 用途 | 获取方式 |
+|---|---|---|
+| `GLOBALPING_TOKEN` | 调用 Globalping API，创建探测任务、查询探测节点和测量结果 | 在 Globalping 账户中创建并复制 API Token |
+| `MONITOR_API_KEY` | 管理 API 的访问鉴权，前端管理请求通过 `X-Monitor-Key` 请求头携带 | 在本地电脑使用 OpenSSL 随机生成 |
+| `HEARTBEAT_TOKEN_ENCRYPTION_KEY` | 使用 AES-256-GCM 加密保存心跳设备 Token，以便管理界面重新显示心跳 URL | 在本地电脑使用 OpenSSL 生成 32 字节随机密钥，再进行 Base64 编码 |
+
+#### 生成 MONITOR_API_KEY
+
+在 Linux、macOS、WSL 或安装了 OpenSSL 的 Windows 终端执行：
+
+```bash
+openssl rand -hex 32
+```
+
+命令会输出一串 64 位十六进制随机字符串。复制完整输出，作为 `MONITOR_API_KEY` 的值。
+
+#### 生成 HEARTBEAT_TOKEN_ENCRYPTION_KEY
+
+在终端执行：
+
+```bash
+openssl rand -base64 32
+```
+
+命令会输出一段 Base64 字符串。复制完整输出，作为 `HEARTBEAT_TOKEN_ENCRYPTION_KEY` 的值。
+
+**这个命令生成的是 32 字节随机数据的 Base64 编码，符合当前 Worker 源码的要求。** Worker 会对该值进行 Base64 解码，并要求解码后长度必须正好是 32 字节；不能把上面两个命令生成的值互换。
+
+#### GLOBALPING_TOKEN
+
+这个值不是本项目本地生成的密钥。登录 Globalping 账户，在 API Token 管理页面创建并复制 Token。
+
+#### 重要注意事项
+
+- 两个 OpenSSL 命令都在你自己的电脑终端执行，不是在 Cloudflare D1 Console 或 Worker 在线编辑器中执行。
+- 每次生成都会得到不同的随机值。生成后立即复制并妥善保存。
+- 不要把任何 Secret 提交到 GitHub，也不要写入 `index.html` 或 Worker 源码。
+- `HEARTBEAT_TOKEN_ENCRYPTION_KEY` 尤其重要：**正式使用后不要随意重新生成或更换**。数据库中的心跳设备 Token 密文依赖原密钥解密；更换密钥后，旧密文将无法解密，已有设备的原心跳 URL 也可能无法重新取回。若密钥遗失，同样无法解密旧密文。
 
 ---
 
@@ -121,26 +158,27 @@ Worker 负责 API、探测调度、结果轮询、心跳离线判断和 Webhook 
 
 变量名必须准确写成大写 `DB`，因为 Worker 源码通过 `env.DB` 访问数据库。
 
-### 4.4 配置环境变量和密钥
+### 4.4 配置三个运行时 Secret
 
-在 Worker 的 **Settings** → **Variables and Secrets** 中添加：
+在 Worker 的 **Settings** → **Variables and Secrets** 中，添加以下三个 Secret：
 
-| 变量名 | 类型 | 值 |
+| Secret 名称 | 类型 | 填入的值 |
 |---|---|---|
-| `MONITOR_API_KEY` | Secret | 第二步准备的随机管理密钥 |
-| `GLOBALPING_TOKEN` | Secret | 第二步取得的 Globalping API Token |
+| `GLOBALPING_TOKEN` | Secret | 第二步从 Globalping 获取的 API Token |
+| `MONITOR_API_KEY` | Secret | 第二步使用 `openssl rand -hex 32` 生成的 64 位十六进制字符串 |
+| `HEARTBEAT_TOKEN_ENCRYPTION_KEY` | Secret | 第二步使用 `openssl rand -base64 32` 生成的 Base64 字符串 |
 
 操作方式：
 
-1. 点击添加变量。
-2. 名称按表格填写，注意大小写。
-3. 将值粘贴到 Value。
-4. 对这两个变量选择 Secret（不要使用普通明文变量）。
-5. 保存。
+1. 打开 Worker → **Settings** → **Variables and Secrets**。
+2. 点击添加变量，类型选择 **Secret**。
+3. 按表格逐个填写 Secret 名称和值，注意名称大小写和下划线。
+4. 保存三个 Secret。
+5. 如果 Cloudflare 提示变量更新后需要重新部署，请按页面提示部署新版本。
 
-如果 Cloudflare 提示变量更新后需要重新部署，请按页面提示部署新版本。
+三个值的用途不同，不能互相替代。尤其不要把 `HEARTBEAT_TOKEN_ENCRYPTION_KEY` 当作普通管理密钥使用，也不要在系统运行后随意更换它。
 
-**不要把这两个值写进 Worker 源码或前端 HTML。**
+**不要把这三个值写进 Worker 源码、前端 HTML 或 GitHub 仓库。**
 
 ### 4.5 配置 Worker 定时任务（Cron Trigger）
 
@@ -421,8 +459,9 @@ D1 保存监控对象、测量历史、心跳设备和告警记录。建议定�
 - [ ] 已完整执行 `database/schema.sql`
 - [ ] Worker 已部署
 - [ ] Worker 已绑定 D1，变量名为 `DB`
-- [ ] 已配置 Secret：`MONITOR_API_KEY`
 - [ ] 已配置 Secret：`GLOBALPING_TOKEN`
+- [ ] 已配置 Secret：`MONITOR_API_KEY`
+- [ ] 已配置 Secret：`HEARTBEAT_TOKEN_ENCRYPTION_KEY`
 - [ ] Cron Trigger 已配置并能正常执行
 - [ ] Pages 已连接 GitHub 仓库并部署成功
 - [ ] Pages 域名的 `/api/*` 已正确转发到 Worker
