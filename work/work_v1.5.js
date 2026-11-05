@@ -169,6 +169,7 @@ export default {
         return json({ error: "Invalid monitor ID" }, 400);
       }
 
+      if (request.method === "GET" && url.pathname.endsWith("/history")) return getMonitorHistory(id, url, env);
       if (request.method === "GET") return getMonitor(id, env);
       if (request.method === "PUT") return updateMonitor(id, request, env);
       if (request.method === "DELETE") return deleteMonitor(id, env);
@@ -1939,6 +1940,33 @@ async function listMonitors(url, env) {
   } catch (error) {
     return json({ success: false, error: error.message }, 500);
   }
+}
+
+
+async function getMonitorHistory(id,url,env){
+ try{
+  const monitor=await env.DB.prepare("SELECT id,name,target FROM monitors WHERE id=? AND deleted_at IS NULL").bind(id).first();
+  if(!monitor)return json({error:"Monitor not found"},404);
+  const limit=Number(url.searchParams.get("limit")||100);
+  if(!Number.isInteger(limit)||limit<1||limit>500)return json({error:"limit must be 1-500"},400);
+  const q=await env.DB.prepare(`
+   SELECT m.id AS measurement_id,COALESCE(m.finished_at,m.created_at) AS measured_at,m.status AS measurement_status,
+    COUNT(pr.id) AS probe_count,
+    SUM(CASE WHEN pr.packets_received>0 THEN 1 ELSE 0 END) AS successful_probe_count,
+    AVG(CASE WHEN pr.packets_received>0 THEN pr.latency_avg END) AS latency_avg,
+    MIN(CASE WHEN pr.packets_received>0 THEN pr.latency_min END) AS latency_min,
+    MAX(CASE WHEN pr.packets_received>0 THEN pr.latency_max END) AS latency_max,
+    AVG(pr.packet_loss) AS packet_loss
+   FROM measurements m LEFT JOIN probe_results pr ON pr.measurement_id=m.id
+   WHERE m.monitor_id=? AND m.status IN ('finished','failed')
+   GROUP BY m.id ORDER BY COALESCE(m.finished_at,m.created_at) DESC LIMIT ?
+  `).bind(id,limit).all();
+  const points=(q.results||[]).reverse().map(r=>({measurement_id:r.measurement_id,measured_at:r.measured_at,status:r.measurement_status,
+   probe_count:Number(r.probe_count||0),successful_probe_count:Number(r.successful_probe_count||0),
+   latency_avg:r.latency_avg==null?null:Number(r.latency_avg),latency_min:r.latency_min==null?null:Number(r.latency_min),
+   latency_max:r.latency_max==null?null:Number(r.latency_max),packet_loss:r.packet_loss==null?null:Number(r.packet_loss)}));
+  return json({success:true,monitor,points,count:points.length});
+ }catch(error){console.error("Monitor history query failed:",error);return json({success:false,error:error.message},500);}
 }
 
 // ==================================================
