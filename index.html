@@ -570,6 +570,12 @@ function render() {
     toggleButton.onclick = () => toggleMonitor(monitor);
     actions.appendChild(toggleButton);
 
+    const deleteButton = document.createElement("button");
+    deleteButton.className = "danger";
+    deleteButton.textContent = "删除";
+    deleteButton.onclick = () => deleteMonitor(monitor);
+    actions.appendChild(deleteButton);
+
     actionCell.appendChild(actions);
     tr.appendChild(actionCell);
     tbody.appendChild(tr);
@@ -676,7 +682,8 @@ async function toggleMonitor(monitor) {
       });
     } else {
       await apiRequest(`${API}/${encodeURIComponent(monitor.id)}`, {
-        method: "DELETE"
+        method: "PUT",
+        body: JSON.stringify({ enabled: false })
       });
     }
 
@@ -684,6 +691,26 @@ async function toggleMonitor(monitor) {
     await loadMonitors();
   } catch (error) {
     showMessage(`${action}失败：` + error.message);
+  }
+}
+
+
+async function deleteMonitor(monitor) {
+  const confirmed = confirm(
+    `确定删除监控对象“${monitor.name}”（${monitor.target}）吗？\n\n删除后将停止后续探测；已有测量数据、状态事件和告警记录会保留。`
+  );
+
+  if (!confirmed) return;
+
+  try {
+    await apiRequest(`${API}/${encodeURIComponent(monitor.id)}`, {
+      method: "DELETE"
+    });
+
+    showMessage("监控对象已删除，历史记录已保留", false);
+    await loadMonitors();
+  } catch (error) {
+    showMessage("删除失败：" + error.message);
   }
 }
 
