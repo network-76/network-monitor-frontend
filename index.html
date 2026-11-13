@@ -522,7 +522,7 @@ footer { color: #8993a2; font-size: 12px; margin: 18px 0; }
         </tbody>
       </table>
     </div>
-    <div class="hint">仅显示最近 50 条通知记录。测试发送不会写入此记录；正式 DOWN / UP 状态变化才会生成通知。</div>
+    <div class="hint">统一显示普通网络监控与心跳设备的最近 50 条通知记录。测试发送不会写入此记录；正式 DOWN / UP 状态变化才会生成通知。</div>
   </div>
 
   <footer>数据来自网络监控服务 · 页面每 60 秒自动刷新</footer>
@@ -1143,16 +1143,34 @@ async function toggleWebhook(item) {
   }
 }
 
+const HEARTBEAT_NOTIFICATION_API = "/api/heartbeat/notifications";
+
 async function loadNotifications() {
  const button=document.getElementById("notificationRefreshButton"),stamp=document.getElementById("notificationRefreshTime");
  if(button){button.disabled=true;button.textContent="刷新中…";}
  setInlineMessage("notificationMessage","正在读取最新通知记录…",false);
- try{const data=await apiRequest(`${NOTIFICATION_API}?limit=50&offset=0`,{cache:"no-store"});
-  const items=Array.isArray(data.notifications)?data.notifications:[];renderNotifications(items);
+ try {
+  const [normalData, heartbeatData] = await Promise.all([
+   apiRequest(`${NOTIFICATION_API}?limit=50&offset=0`,{cache:"no-store"}),
+   apiRequest(`${HEARTBEAT_NOTIFICATION_API}?limit=50`,{cache:"no-store"})
+  ]);
+  const normalItems = Array.isArray(normalData.notifications) ? normalData.notifications : [];
+  const heartbeatItems = Array.isArray(heartbeatData.notifications) ? heartbeatData.notifications : [];
+  const items = [
+   ...normalItems.map(item => ({...item, notification_source:"monitor"})),
+   ...heartbeatItems.map(item => ({...item, notification_source:"heartbeat"}))
+  ].sort((a,b) => {
+   const timeDiff = Date.parse(b.created_at || "") - Date.parse(a.created_at || "");
+   return Number.isFinite(timeDiff) ? timeDiff : 0;
+  }).slice(0,50);
+  renderNotifications(items);
   if(stamp)stamp.textContent="最近刷新："+formatTime(new Date().toISOString());
-  setInlineMessage("notificationMessage",`刷新完成，共读取 ${items.length} 条记录`,false);
- }catch(error){setInlineMessage("notificationMessage","读取通知记录失败："+error.message);}
- finally{if(button){button.disabled=false;button.textContent="刷新记录";}}
+  setInlineMessage("notificationMessage",`刷新完成，普通监控 ${normalItems.length} 条，心跳设备 ${heartbeatItems.length} 条，合计显示 ${items.length} 条`,false);
+ } catch(error) {
+  setInlineMessage("notificationMessage","读取通知记录失败："+error.message);
+ } finally {
+  if(button){button.disabled=false;button.textContent="刷新记录";}
+ }
 }
 
 function renderNotifications(items) {
