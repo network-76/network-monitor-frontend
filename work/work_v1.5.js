@@ -2819,10 +2819,26 @@ async function listHeartbeatEvents(url, env) {
 }
 
 async function listHeartbeatNotifications(url, env) {
-  const limit = Math.min(500, Math.max(1, Number(url.searchParams.get("limit")) || 100));
-  const result = await env.DB.prepare("SELECT * FROM heartbeat_notification_logs ORDER BY created_at DESC LIMIT ?")
-    .bind(limit).all();
-  return json({notifications:result.results||[]});
+  const limitRaw = Number(url.searchParams.get("limit") || 50);
+  if (!Number.isInteger(limitRaw) || limitRaw < 1 || limitRaw > 100) {
+    return json({ error: "limit must be 1-100" }, 400);
+  }
+
+  const result = await env.DB.prepare(`
+    SELECT n.id, n.event_id, n.webhook_config_id, n.status, n.attempt_count,
+           n.http_status, n.response_body, n.error_message, n.next_retry_at,
+           n.sent_at, n.created_at, n.updated_at,
+           w.name AS webhook_name, d.name AS monitor_name, NULL AS target,
+           e.previous_status, e.current_status, e.message AS event_message
+    FROM heartbeat_notification_logs n
+    LEFT JOIN webhook_configs w ON w.id = n.webhook_config_id
+    LEFT JOIN heartbeat_events e ON e.id = n.event_id
+    LEFT JOIN heartbeat_devices d ON d.id = e.device_id
+    ORDER BY n.created_at DESC
+    LIMIT ?
+  `).bind(limitRaw).all();
+
+  return json({ notifications: result.results || [], limit: limitRaw });
 }
 
 async function enqueueHeartbeatNotifications(eventId, device, eventType, message, sourceIp, env) {
