@@ -202,6 +202,15 @@ CREATE INDEX idx_heartbeat_notification_status
 CREATE INDEX idx_measurements_monitor
   ON measurements(monitor_id, created_at);
 
+-- Optimizes completed measurement history queries by monitor and effective finish time.
+CREATE INDEX idx_measurements_monitor_finished_order
+  ON measurements (
+    monitor_id,
+    COALESCE(finished_at, created_at) DESC,
+    created_at DESC
+  )
+  WHERE status IN ('finished', 'failed');
+
 CREATE INDEX idx_measurements_status
   ON measurements(status, last_polled_at);
 
