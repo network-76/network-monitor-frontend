@@ -1206,8 +1206,18 @@ function renderNotifications(items) {
 
     const eventCell = addCell("");
     const eventStatus = item.current_status || "-";
-    eventCell.textContent = eventStatus === "DOWN" ? "故障 DOWN" :
-      eventStatus === "UP" ? "恢复 UP" : eventStatus;
+    const eventBadge = document.createElement("span");
+    if (eventStatus === "DOWN") {
+      eventBadge.className = "tag down";
+      eventBadge.textContent = "故障 DOWN";
+    } else if (eventStatus === "UP") {
+      eventBadge.className = "tag up";
+      eventBadge.textContent = "恢复 UP";
+    } else {
+      eventBadge.className = "tag";
+      eventBadge.textContent = eventStatus;
+    }
+    eventCell.appendChild(eventBadge);
 
     const statusCell = document.createElement("td");
     const badge = document.createElement("span");
