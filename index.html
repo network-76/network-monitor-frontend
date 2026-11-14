@@ -183,6 +183,7 @@ footer { color: #8993a2; font-size: 12px; margin: 18px 0; }
 .tag { display:inline-block; border-radius:10px; padding:3px 8px; font-size:12px; margin-right:4px; background:#edf0f4; color:#536174; }
 .tag.down { background:#ffe8e8; color:#c0392b; }
 .tag.up { background:#e4f6eb; color:#18834b; }
+.notification-event-badge { min-width: 88px; text-align: center; }
 .log-status { display:inline-block; border-radius:10px; padding:3px 8px; font-size:12px; background:#edf0f4; color:#536174; }
 .log-status.sent { background:#e4f6eb; color:#18834b; }
 .log-status.failed { background:#ffe8e8; color:#c0392b; }
@@ -1205,16 +1206,17 @@ function renderNotifications(items) {
     addCell(monitorText);
 
     const eventCell = addCell("");
+    eventCell.style.textAlign = "center";
     const eventStatus = item.current_status || "-";
     const eventBadge = document.createElement("span");
+    eventBadge.className = "tag notification-event-badge";
     if (eventStatus === "DOWN") {
-      eventBadge.className = "tag down";
+      eventBadge.classList.add("down");
       eventBadge.textContent = "故障 DOWN";
     } else if (eventStatus === "UP") {
-      eventBadge.className = "tag up";
+      eventBadge.classList.add("up");
       eventBadge.textContent = "恢复 UP";
     } else {
-      eventBadge.className = "tag";
       eventBadge.textContent = eventStatus;
     }
     eventCell.appendChild(eventBadge);
